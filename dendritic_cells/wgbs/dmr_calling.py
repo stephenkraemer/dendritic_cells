@@ -1,10 +1,11 @@
 """Pairwise DMR calls using DSS"""
 import json
+import os
 import tempfile
 from subprocess import run
 from pathlib import Path
 
-from dmr_calling import create_dmr_metadata_table
+import dmr_calling
 
 # TODO: add meth. calling code to this project (extract from mouse_hematopoiesis umbrella project)
 import mouse_hematopoiesis.wgbs.meth_calling2.meth_calling2 as mcalling
@@ -45,7 +46,10 @@ dc_calls_config = {
     'cpg_index_file': mcalling.calls_v1_paths['cg_index_path'],
 }
 
-dc_dmr_metadata_table = create_dmr_metadata_table(dc_calls_config)
+dc_dmr_metadata_table = dmr_calling.create_dmr_metadata_table(dc_calls_config)
+dc_dmr_metadata_table_fp = os.path.join(
+        wgbs_cohort_results_dir,
+        f'pairwise-dmr-calls/DSS/{mcalling.calls_v1_str}')
 
 if __name__ == '__main__':
 
@@ -54,12 +58,16 @@ if __name__ == '__main__':
         with open(config_fp, 'wt') as fout:
             json.dump(dc_calls_config, fout)
         run(f"""snakemake \
-                --snakefile /home/kraemers/projects/dmr_calling/dmr-calling.snakefile \
+                --snakefile {dmr_calling.get_snakefile_path()} \
                 --configfile {config_fp} \
                 --jobs 1000 \
                 --latency-wait 180 \
-                --jobscript /home/kraemers/projects/mouse_hematopoiesis/src/mouse_hematopoiesis/wgbs/dmr_calling2/jobscript.sh \
+                --jobscript /home/kraemers/projects/dendritic_cells/dendritic_cells/wgbs/dmr_calling_snakemake_jobscript.sh \
                 --cluster "bsub -R rusage[mem={{params.avg_mem}}] -M {{params.max_mem}} -n {{threads}} -J {{params.name}} -W {{params.walltime}} -o /home/kraemers/temp/logs/" \
+                --dryrun
                 """, shell=True, check=True)
+
+    dc_dmr_metadata_table.to_csv(dc_dmr_metadata_table_fp, sep='\t', header=True,
+                                 index=False)
 
 

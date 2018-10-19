@@ -1,11 +1,11 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 setup(
         name='dendritic_cells',
         version='0.1',
         author='Stephen Kraemer',
         author_email='stephenkraemer@gmail.com',
         license='MIT',
-        packages=['dendritic_cells'],
+        packages=find_packages(),
         install_requires=[
             'pandas',
         ],
