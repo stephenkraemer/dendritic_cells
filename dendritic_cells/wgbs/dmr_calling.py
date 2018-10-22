@@ -1,20 +1,23 @@
 """Pairwise DMR calls using DSS"""
+# %%
 import json
 import os
 import tempfile
-from subprocess import run
 from pathlib import Path
+from pkg_resources import resource_filename
 
-import dmr_calling
+import dss_workflow
 
 # TODO: add meth. calling code to this project (extract from mouse_hematopoiesis umbrella project)
 import mouse_hematopoiesis.wgbs.meth_calling2.meth_calling2 as mcalling
 from dendritic_cells.base_paths import (
-    wgbs_cohort_results_dir, project_temp_dir
+    wgbs_cohort_results_dir, project_temp_dir, snakemake_conda_prefix,
+    wgbs_metadata_dir,
 )
+# %%
 
 dc_calls_config = {
-    'chromosomes': sorted([str(i) for i in range(1, 2)]),
+    'chromosomes': sorted([str(i) for i in range(1, 20)]),
     'output_dir': str(Path(wgbs_cohort_results_dir).joinpath(
             f'pairwise-dmr-calls/DSS/{mcalling.calls_v1_str}')),
     'metadata_table': mcalling.calls_v1_paths['metadata_table'],
@@ -46,27 +49,34 @@ dc_calls_config = {
     'cpg_index_file': mcalling.calls_v1_paths['cg_index_path'],
 }
 
-dc_dmr_metadata_table = dmr_calling.create_dmr_metadata_table(dc_calls_config)
-dc_dmr_metadata_table_fp = os.path.join(
-        wgbs_cohort_results_dir,
-        f'pairwise-dmr-calls/DSS/{mcalling.calls_v1_str}')
+dc_dmr_metadata_table = dss_workflow.create_dmr_metadata_table(dc_calls_config)
+dc_dmr_metadata_table_fp = os.path.join(wgbs_metadata_dir, 'final_dmr_calls.tsv')
 
 if __name__ == '__main__':
+    import snakemake
 
     with tempfile.TemporaryDirectory(dir=project_temp_dir) as tmpdir:
         config_fp = Path(tmpdir) / 'config.json'
         with open(config_fp, 'wt') as fout:
             json.dump(dc_calls_config, fout)
-        run(f"""snakemake \
-                --snakefile {dmr_calling.get_snakefile_path()} \
-                --configfile {config_fp} \
-                --jobs 1000 \
-                --latency-wait 180 \
-                --jobscript /home/kraemers/projects/dendritic_cells/dendritic_cells/wgbs/dmr_calling_snakemake_jobscript.sh \
-                --cluster "bsub -R rusage[mem={{params.avg_mem}}] -M {{params.max_mem}} -n {{threads}} -J {{params.name}} -W {{params.walltime}} -o /home/kraemers/temp/logs/" \
-                --dryrun
-                """, shell=True, check=True)
+        dss_snakefile = dss_workflow.get_snakefile_path()
+        snakemake_succeeded = snakemake.snakemake(
+                snakefile=dss_snakefile,
+                configfile=config_fp,
+                nodes=1000,
+                latency_wait=180,
+                jobscript=resource_filename('dendritic_cells', 'snakemake_jobscript.sh'),
+                cluster=("bsub -R rusage[mem={params.avg_mem}] -M {params.max_mem} "
+                         "-n {threads} -J {params.name} -W {params.walltime} "
+                         "-o /home/kraemers/temp/logs/"),
+                conda_prefix=snakemake_conda_prefix,
+                use_conda=True,
+                forceall=True,
+                dryrun=False)
+        if not snakemake_succeeded:
+            raise RuntimeError('Execution of DSS workflow failed')
 
+    Path(dc_dmr_metadata_table_fp).parent.mkdir(exist_ok=True, parents=True)
     dc_dmr_metadata_table.to_csv(dc_dmr_metadata_table_fp, sep='\t', header=True,
                                  index=False)
 
