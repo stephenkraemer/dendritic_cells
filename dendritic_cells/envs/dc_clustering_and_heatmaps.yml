@@ -1,0 +1,33 @@
+# disallow pip from installing dependencies?
+# how do I freeze conda and pip installed dependency versions?
+name: dc_clustering_and_heatmaps
+dependencies:
+  - bedtools
+  - htslib
+  - ipython
+  - joblib>=0.12
+  - matplotlib>=3.0.0
+  - more_itertools
+  - numba
+  - numpy
+  - pandas
+  - python=3.6
+  - scipy
+  - seaborn
+  - statsmodels
+  - toolz
+  - pip:
+      - dataclasses==0.6
+      - dpcontracts==0.4.0
+      - git+https://github.com/endrebak/pyranges@a40914e72a4fc3d7f7fb7e9e74ba135c6f4d19b4
+      # codaplot installed some dependencies
+      - git+file:///home/kraemers/projects/codaplot@546b2c8def74d99ee44382d5e63790e94cef13b8
+      - git+file:///home/kraemers/projects/methlevels@d74629d989effd79436ba6bd7622a43b257d4565
+      # currently needs private fixed version, still need to submit PR
+      - git+file:///home/kraemers/projects/dynamicTreeCut@131512af0535168533aaa4664a5be792c112d7af
+      - FisherExact
+      # dendritic cells installed snakemake and its dependencies
+      # dendritic cells require dss workflow, but don't fix the version number
+      - '-e /home/kraemers/projects/dendritic_cells'
+      # this coupling should be removed
+      - '-e /home/kraemers/projects/mouse_hematopoiesis'

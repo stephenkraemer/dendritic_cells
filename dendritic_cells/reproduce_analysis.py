@@ -10,7 +10,7 @@ Preparation:
 """
 
 # DMR calling
-# ==============================================================================
+# ======================================================================
 import subprocess
 
 subprocess.run("""
@@ -19,3 +19,13 @@ subprocess.run("""
     python3 -m dendritic_cells.wgbs.dmr_calling
 """, shell=True, check=True, executable='/bin/bash')
 
+# DMR characterization
+# ======================================================================
+
+# Clustering and heatmaps
+# ----------------------------------------------------------------------
+subprocess.run("""
+    source ~/.bashrc
+    conda activate dc_dmr_characterization
+    python3 -m dendritic_cells.wgbs.clustering_and_heatmaps
+""")
