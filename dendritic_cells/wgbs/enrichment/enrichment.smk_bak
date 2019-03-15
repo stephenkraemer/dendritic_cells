@@ -1,0 +1,71 @@
+"""
+
+snakemake(
+snakefile='/home/kraemers/projects/dendritic_cells/dendritic_cells/wgbs/enrichment.smk',
+cores=24,
+forcerun=['compute_coverage_stats'],
+)
+
+"""
+import pickle
+import pandas as pd
+from glob import glob
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import region_set_profiler as rsp
+
+from dendritic_cells.base_paths import project_temp_dir, wgbs_cohort_results_dir
+cluster_ids = '/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/cohort_results/analyses/dendritic_cells/dmr_characterization/dynamic-cutree_deepSplit2.p'
+codex_bed_files_dir = '/icgc/dkfzlsdf/analysis/hs_ontogeny/databases/enrichment_databases/lola_chipseq/codex/regions'
+encode_bed_files_dir = '/icgc/dkfzlsdf/analysis/hs_ontogeny/databases/enrichment_databases/lola_chipseq/encode/regions'
+bed_files_dict = dict(
+    codex = glob(codex_bed_files_dir + '/*.bed'),
+    encode = glob(codex_bed_files_dir + '/*.bed'),
+    homer = glob('/icgc/dkfzlsdf/analysis/hs_ontogeny/databases/enrichment_databases/homer/homer_lola/*/regions/*.bed'),
+)
+
+
+results_dir = Path(wgbs_cohort_results_dir).joinpath(
+    'analyses/dendritic_cells/dmr_characterization/enrichments')
+analysis_tempdir_obj = TemporaryDirectory(dir=project_temp_dir)
+analysis_tmpdir = analysis_tempdir_obj.name
+chromosomes = sorted([str(i) for i in range(1, 20)])
+
+coverage_stats_by_db = str(results_dir / 'coverage-stats/coverage-stats_{database}.p')
+coverage_counts_by_db = str(results_dir / 'coverage-stats/coverage-counts_{database}.p')
+
+
+rule all:
+    input:
+        expand(coverage_stats_by_db, database=['codex']),
+        # expand(coverage_counts_by_db, database=['codex']),
+
+
+rule compute_coverage_stats:
+    input:
+        # Required because the cluster ids define the regions where
+        # enrichment is allowed
+        cluster_ids=cluster_ids,
+        bed_files=lambda wildcards: bed_files_dict[wildcards.database]
+    params:
+        analysis_tmpdir=analysis_tmpdir,
+        chromosomes=chromosomes,
+    threads: 24
+    output:
+        coverage_stats_by_db,
+    script:
+        'get_overlap_stats.py'
+
+# rule compute_coverage_counts:
+#     input:
+#         cluster_ids=cluster_ids,
+#         coverage_stats=coverage_stats_by_db,
+#     output:
+#         coverage_counts_by_db,
+#     run:
+#         with open(input.coverage_stats, 'rb') as fin:
+#             coverage_stats = pickle.load(fin)
+#         cluster_counts = coverage_stats.aggregate(
+#             cluster_ids=cluster_ids_df,
+#             min_counts=20)

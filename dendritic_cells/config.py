@@ -1,0 +1,21 @@
+paper_context = {
+    'font.size': 7,
+    'axes.labelsize': 7,
+    'axes.titlesize': 8,
+    'xtick.labelsize': 7,
+    'ytick.labelsize': 7,
+    'legend.fontsize': 7,
+    'axes.linewidth': 1.0,
+    'grid.linewidth': 0.8,
+    'lines.linewidth': 0.8,
+    'lines.markersize': 3,
+    'patch.linewidth': 0.8,
+    'xtick.major.width': 0.6,
+    'ytick.major.width': 0.6,
+    'xtick.minor.width': 0.4,
+    'ytick.minor.width': 0.4,
+    'xtick.major.size': 3,
+    'ytick.major.size': 3,
+    'xtick.minor.size': 2,
+    'ytick.minor.size': 2
+}

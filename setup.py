@@ -13,6 +13,7 @@ setup(
         # the reproduce_analysis module
         install_requires=[
             'pandas>=0.23',
+            # this needs to be a git repo, currently manually installed
             'dss_workflow',
         ],
         python_requires='>=3.6',

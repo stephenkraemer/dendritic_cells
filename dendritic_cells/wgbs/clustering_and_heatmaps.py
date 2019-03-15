@@ -17,6 +17,8 @@ RESULTS_DIR = Path(wgbs_cohort_results_dir).joinpath(
         'analyses/dendritic_cells/dmr_characterization')
 merged_dmrs_p = RESULTS_DIR / 'merged-dmrs.p'
 merged_dmrs_tsv = RESULTS_DIR / 'merged-dmrs.tsv'
+merged_dmrs_bed = RESULTS_DIR / 'merged-dmrs.bed'
+merged_dmrs_bed_no_header = RESULTS_DIR / 'merged-dmrs_no-header.bed'
 meth_stats_flat_tsv = str(RESULTS_DIR / 'meth-stats.tsv')
 meth_stats_p = RESULTS_DIR / 'meth-stats.p'
 dist_mat_npy = RESULTS_DIR / 'dist-mat_z-score_euclidean.npy'
@@ -70,6 +72,10 @@ if __name__ == '__main__':
                                          chromosome_cat_dtype=chromosome_cat_dtype)
         merged_dmrs.to_pickle(merged_dmrs_p)
         merged_dmrs.to_csv(merged_dmrs_tsv, sep='\t', header=True, index=False)
+        (merged_dmrs.rename(columns={'Chromosome': '#Chromosome'})
+         .to_csv(merged_dmrs_bed, sep='\t', header=True, index=False))
+        merged_dmrs.to_csv(merged_dmrs_bed_no_header, sep='\t',
+                           header=False, index=False)
 
         # get filtered meth stats
         # ==================================================================

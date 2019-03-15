@@ -1,0 +1,8 @@
+{
+"queries":[
+        {"feature":"gene", "distance":1000, "show.attributes":"gene_name"},
+        {"feature":"transcript", "distance":1000}],
+"priority" : "False",
+"gtf":"Homo_sapiens.GRCh37.75.gtf",
+"bed":"ENCFF001VFA.bed"
+}

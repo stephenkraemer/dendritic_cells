@@ -1,0 +1,35 @@
+name: dc_rsp_enrichments
+dependencies:
+  - bedtools
+  - htslib
+  - ipython
+  - joblib>=0.12
+  - matplotlib>=3.0.0
+  - more-itertools
+  - numba
+  - numpy
+  - pandas
+  - python=3.6
+  - uropa
+  - scipy
+  - seaborn
+  - snakemake>=5.3.0
+  - statsmodels
+  - toolz
+  - pip:
+    - dataclasses
+    - dpcontracts==0.4.0
+    - git+https://github.com/endrebak/pyranges
+    # codaplot installed some dependencies
+    - '-e /home/kraemers/projects/codaplot'
+    - '-e /home/kraemers/projects/methlevels'
+    # currently needs private fixed version, still need to submit PR
+    - git+file:///home/kraemers/projects/dynamicTreeCut@131512af0535168533aaa4664a5be792c112d7af
+    - FisherExact
+    # dendritic cells installed snakemake and its dependencies
+    # dendritic cells require dss workflow, but don't fix the version number
+    - '-e /home/kraemers/projects/dss_workflow'
+    - '-e /home/kraemers/projects/dendritic_cells'
+    # this coupling should be removed
+    - '-e /home/kraemers/projects/mouse_hematopoiesis'
+    - '-e /home/kraemers/projects/region_set_profiler'
