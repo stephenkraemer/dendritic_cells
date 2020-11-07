@@ -4,11 +4,13 @@ gtfanno version: b81595d
 
 import os
 import pickle
+import re
 import tempfile
 from itertools import product
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+import codaplot as co
 import figure_report as fr
 import gtfanno as ga
 import matplotlib as mpl
@@ -16,9 +18,12 @@ import matplotlib.pyplot as plt
 import mouse_hema_meth.paths as mhpaths
 import mouse_hema_meth.shared_vars as mhvars
 import mouse_hema_meth.styling as mhstyle
+import mouse_hema_meth.utils as ut
 import numpy as np
 import pandas as pd
 import region_set_profiler as rsp
+import seaborn as sns
+from matplotlib.figure import Figure
 from typing_extensions import Literal
 
 mpl.use("Agg")
@@ -596,7 +601,7 @@ def cluster_marker_genes_overview(
     Parameters
     ----------
     genesets_d_ser
-        {'geneset_database_name': pd.Series({'geneset1': ['geneA', 'geneB'], 'geneset2': ...})
+        'geneset_database_name' -> pd.Series({'geneset1': ['geneA', 'geneB'], 'geneset2': ...})
     primary_gene_annos
         as returned by gtfanno
         this version of the function assumes that the dataframe does not yet contain a 'region_id' column automatically and merges this in manually
@@ -608,8 +613,8 @@ def cluster_marker_genes_overview(
 
     Returns
     -------
-    pd.DataFrame
-        int_index // geneset_database_name 	genomic_regions 	geneset_name 	cluster_id 	gene_name
+        pd.DataFrame
+            int_index // geneset_database_name genomic_regions geneset_name cluster_id gene_name
     """
 
     pd.testing.assert_index_equal(granges_df.index, cluster_ids.index)
@@ -672,6 +677,474 @@ def cluster_marker_genes_overview(
     ).reset_index()
 
     # clean up unused categories, not necessary if the full looping above is actually used
-    res_df = res_df.drop('partitioning_name', axis=1)
+    res_df = res_df.drop("partitioning_name", axis=1)
 
     return res_df
+
+
+def create_clustermaps_with_special_order(
+    df: pd.DataFrame,
+    cluster_ids_df: pd.DataFrame,
+    png_path: str,
+    cmap: str,
+    guide_title: str,
+    global_row_order_df: Optional[pd.DataFrame] = None,
+    figsize=(10, 10),
+    n_per_cluster=None,
+) -> None:
+    """Create special-order clustermaps for all given partitionings
+
+    Uses clustermap_special order, see there for details
+
+
+    Parameters
+    ----------
+    df
+    cluster_ids_df
+        one or more partitionings (one column per partitioning)
+    global_row_order_df
+        as returned by hclust_within_clusters
+        index: same as df (consecutive integer index starting at 0)
+        columns: same as cluster_ids_df (partitioning names)
+        values: position of feature in globally ordered data (according to partitioning + hclust)
+    png_path
+    """
+
+    pd.testing.assert_index_equal(df.index, cluster_ids_df.index, check_names=False)
+    if global_row_order_df is not None:
+        pd.testing.assert_index_equal(
+            df.index, global_row_order_df.index, check_names=False
+        )
+
+    for part_name, cluster_id_ser in cluster_ids_df.iteritems():
+        if global_row_order_df is None:
+            global_row_order_ser = None
+        else:
+            global_row_order_ser = global_row_order_df[part_name]
+
+        fig = clustermap_special_order(
+            df,
+            cluster_id_ser,
+            global_row_order_ser,
+            figsize=figsize,
+            n_per_cluster=n_per_cluster,
+            cmap=cmap,
+            guide_title=guide_title,
+        )
+        fig.savefig(png_path)
+        fig.savefig(png_path.replace(".png", ".pdf"))
+
+
+def clustermap_special_order(
+    df,
+    cluster_id_ser,
+    global_row_order_ser,
+    n_per_cluster: int = 200,
+    figsize=None,
+    rasterized=True,
+    guide_title="guide title",
+    cmap="RdBu_r",
+):
+    """Clustermap respecting special row_order argument
+
+    Row order is taken from global_row_order_ser if defined (which could for example come
+    from hierarchical clustering, within a primary partitioning)
+    Otherwise, row order is created based on the cluster_ids_df partitionings, and row
+    order within each cluster is random.
+
+    Parameters
+    ----------
+    df
+    cluster_id_ser
+    global_row_order_ser
+        as returned by hclust_within_clusters
+        index: same as df (consecutive integer index starting at 0)
+        values: position of feature in globally ordered data (according to partitioning + hclust)
+    n_per_cluster
+        number of features per cluster shown in heatmap
+
+    Returns
+    -------
+
+
+    """
+
+    pd.testing.assert_index_equal(df.index, cluster_id_ser.index, check_names=False)
+    if global_row_order_ser is not None:
+        pd.testing.assert_index_equal(
+            df.index, global_row_order_ser.index, check_names=False
+        )
+
+    # sample max n_per_cluster features per cluster
+    sampled_cluster_ids = (
+        cluster_id_ser.groupby(cluster_id_ser, group_keys=False)
+        .apply(
+            lambda ser: ser.sample(n_per_cluster)
+            if n_per_cluster < ser.shape[0]
+            else ser
+        )
+        .sort_index()
+    )  # sort index just for faster retrieval during indexing operations
+    if global_row_order_ser is None:
+        row_order = sampled_cluster_ids.reset_index(drop=True).sort_values().index
+    else:
+        # get the row_order for the heatmap from the global row order
+        row_order = (
+            # get global order position for selected elements
+            global_row_order_ser.loc[sampled_cluster_ids.index]
+            # reset index to eventually get integer indices as required by row_order
+            .reset_index(drop=True)
+            # sort on order positions
+            .sort_values()
+            # get original integer index values in the now correctly ordered data
+            # this can be used as integer row order argument for eg co.cross_plot
+            .index
+        )
+    fig = nice_clustermap(
+        stat_df=df.loc[sampled_cluster_ids.index],
+        cluster_id_ser=sampled_cluster_ids,
+        row_order=row_order,
+        figsize=figsize,
+        rasterized=rasterized,
+        cmap=cmap,
+        guide_title=guide_title,
+    )
+    return fig
+
+
+def nice_clustermap(
+    stat_df: pd.DataFrame,
+    cluster_id_ser: pd.Series,
+    row_order: Union[pd.Series, np.ndarray],
+    colors: Dict = None,
+    figsize=(20 / 2.54, 20 / 2.54),
+    rasterized=True,
+    cmap="magma",
+    guide_title="% sign cpgs",
+) -> Figure:
+    """Nice clustermap for given cluster_ids and integer index row_order
+
+    Parameters
+    ----------
+    stat_df
+    cluster_id_ser
+    row_order
+    colors
+    figsize
+
+    Returns
+    -------
+    Figure
+
+    """
+
+    # create dict cluster_id -> color if necessary
+    if colors is None:
+        n_clusters = cluster_id_ser.nunique()
+        colors = dict(
+            zip(np.unique(cluster_id_ser), sns.color_palette("Set1", n_clusters))
+        )
+
+    array_to_figure_res, plot_arr = co.cross_plot(
+        center_plots=[
+            dict(
+                df=stat_df,
+                cmap=cmap,
+                guide_title=guide_title,
+                yticklabels=False,
+                xticklabels=True,
+                rasterized=rasterized,
+                guide_args=dict(shrink=0.4, aspect=4),
+            )
+        ],
+        # center_margin_ticklabels=True,
+        pads_around_center=[(0.2 / 2.54, "abs")],
+        figsize=figsize,
+        # constrained_layout=True,
+        # layout_pads=dict(wspace=0, hspace=0, h_pad=0, w_pad=0),
+        left_plots=[
+            dict(
+                _func=co.frame_groups,
+                direction="y",
+                colors=colors,
+                linewidth=1,
+                add_labels=True,
+                labels=None,
+                label_colors=None,
+                label_groups_kwargs=dict(rotation=0),
+            )
+        ],
+        left_col_sizes=[(0.5 / 2.54, "abs")],
+        row_order=row_order,
+        # col_linkage=False,
+        row_spacing_group_ids=cluster_id_ser,
+        # # col_spacing_group_ids=col_clusters,
+        row_spacer_sizes=0.01,
+        # # col_spacer_sizes=0.05,
+        # default_plotting_func_kwargs=dict(guide_args=dict(shrink=0.3, aspect=8)),
+    )
+    return array_to_figure_res["fig"]
+
+
+def collect_original_flagstats(file_pattern):
+
+    flagstats_paths_df = ut.get_files_df(file_pattern)
+    res = {}
+    for pop_rep_idx, path in flagstats_paths_df.set_index(["pop", "rep"])[
+        "path"
+    ].iteritems():
+        with open(path) as fin:
+            flagstats_data_ser = pd.Series(
+                fin.readlines(),
+                index=[
+                    "No. of reads",
+                    "No. of duplicates",
+                    "No. mapped",
+                    "No. paired",
+                    "No. read1",
+                    "No. read2",
+                    "No. of proper pairs",
+                    "No. both mapped",
+                    "No. of Singletons",
+                    "No. diffchrom",
+                    "No. diffchrom (mapQ >=5)",
+                ],
+            )
+        flagstats_counts = (
+            flagstats_data_ser.str.extract(r"^(\d+) \+ (\d+) ")
+            .astype("i4")
+            .set_axis(["QC-passed reads", "QC-failed reads"], axis=1)
+            .T
+        )
+
+        flagstats_perc = flagstats_counts.divide(
+            flagstats_counts["No. of reads"], axis=0
+        ).rename(columns=lambda s: re.sub(r"No. (of )?", "% ", s))
+
+        flagstats_df_both = pd.concat([flagstats_counts, flagstats_perc], axis=1)
+        try:
+            res[
+                mhstyle.nice_pop_names_d[pop_rep_idx[0]], pop_rep_idx[1]
+            ] = flagstats_df_both
+        except KeyError:
+            # not a hema meth pop with a nice name, skip
+            continue
+
+    res_df = (
+        pd.concat(res)
+        .rename_axis(["Population", "Replicate", "Read QC status"], axis=0)
+        .rename_axis("Stat", axis=1)
+        .stack()
+        .unstack("Read QC status")
+        .sort_index()
+    )
+
+    return res_df
+
+
+def gather_conversion_rate_table(mcalls_metadata_table):
+    """Gather CG and CH methylation stats for chromosome 1 and MT chromosome
+
+    methylctools based
+
+    Parameters
+    ----------
+    mcalls_metadata_table
+        should be prefiltered to desired pops and reps, index: (pop, rep)
+    """
+
+    metrics_file_by_sampleid_chrom = "/icgc/dkfzlsdf/project/mouse_hematopoiesis/sequencing/whole_genome_bisulfite_tagmentation_sequencing/view-by-pid/{sample_id}/blood/paired/merged-alignment/methylation/merged/methylationCallingMetrics/blood_{sample_id}_merged.mdup.bam.{chrom}.metrics.csv"
+
+    res = {}
+    for pop_rep_idx, row_ser in mcalls_metadata_table.iterrows():
+        for curr_chrom in ["1", "MT"]:
+            with open(
+                metrics_file_by_sampleid_chrom.format(
+                    chrom=curr_chrom, sample_id=row_ser["sample_id"]
+                )
+            ) as f:
+                lines = f.readlines()
+                res[
+                    mhstyle.nice_pop_names_d[pop_rep_idx[0]], pop_rep_idx[1], curr_chrom
+                ] = (pd.Series(lines[2:4]).str.strip().str.split("\t", expand=True))
+
+    res_df = (
+        (
+            pd.concat(res)
+            .reset_index()
+            .set_axis(
+                [
+                    "Population",
+                    "Replicate",
+                    "Chromosome",
+                    "Unused",
+                    "Chromosome_b",
+                    "Motif",
+                    "N methylated",
+                    "N unmethylated",
+                    "Beta value",
+                ],
+                axis=1,
+            )
+        )
+        .drop("Unused", axis=1)
+        .astype({"N methylated": "i4", "N unmethylated": "i4", "Beta value": "f8"})
+    )
+    res_df["% Methylation"] = (
+        res_df.eval("`N methylated` / (`N methylated` + `N unmethylated`)") * 100
+    )
+    assert (
+        res_df["% Methylation"].round(2) == (res_df["Beta value"] * 100).round(2)
+    ).all()
+
+    res_df["Est. conversion rate"] = 100 - res_df["% Methylation"]
+
+    pd.testing.assert_series_equal(
+        res_df["Chromosome"], res_df["Chromosome_b"], check_names=False
+    )
+
+    return (
+        res_df.drop("Chromosome_b", axis=1)
+        .sort_values(["Motif", "Chromosome", "Population", "Replicate"])
+        .query('Motif != "CG" and Chromosome == "1"')
+    )
+
+
+def gather_meth_level_data(
+    mcalls_metadata_table: pd.DataFrame,
+    recompute,
+    pop_quantiles_wide_p,
+    pop_quantiles_long_p,
+    sampled_rep_betavalue_p,
+    sampled_pop_betavalue_p,
+    pop_betavalue_p,
+    pop_betavalue_mean_df_p,
+    rep_beta_value_mean_p,
+):
+
+    # Get total number of CpGs for preallocating some results
+    n_cpgs = pd.read_pickle(
+        mcalls_metadata_table.query('subject == "hsc"').iloc[0]["pickle_path"]
+    ).shape[0]
+
+    # this currently assumes that the meth calls file only contains autosomes,
+    # and that the qc analysis is also only performed on autosomes
+    # let's put a reminder in case the calls change in the future
+    assert np.all(
+        np.sort(
+            pd.read_pickle(
+                mcalls_metadata_table.query('subject == "hsc"').iloc[0]["pickle_path"]
+            )["#chrom"]
+            .unique()
+            .astype(str)
+        )
+        == np.sort(np.arange(1, 20).astype(str))
+    )
+
+    if recompute:
+
+        # coverage quantiles to be queried
+        # noinspection PyUnresolvedReferences
+        queried_quantiles = np.sort(
+            np.linspace(0, 1, 11).tolist() + [0.25, 0.75, 0.025, 0.975]
+        )
+
+        # random integer index to sample CpGs from each replicate
+        random_int_idx = np.sort(
+            np.random.RandomState(1).choice(n_cpgs, size=100_000, replace=False)
+        )
+
+        # ~ 7 min
+        # compute coverage per population by aggregating replicates
+        # then compute some stats
+        pop_quantile_ser_d = {}
+        sampled_rep_meth_d = {}
+        sampled_pop_meth_d = {}
+        pop_beta_value_d = {}
+        rep_mean_d = {}
+        for pop, group_df in mcalls_metadata_table.groupby("subject"):
+            print(pop)
+            # preallocate pop coverage series for genome-wide CpGs
+            nmeth_pop = pd.Series(0, index=pd.RangeIndex(n_cpgs), dtype="i4")
+            ntotal_pop = pd.Series(0, index=pd.RangeIndex(n_cpgs), dtype="i4")
+            # Iterate over replicates, compute total pop coverage
+            for _unused, row_ser in group_df.iterrows():
+                if row_ser["subject"] == "monos":
+                    # for monos-new, no pickle
+                    curr_calls = pd.read_csv(row_ser["bed_path"], sep="\t").rename(
+                        columns={"#chrom": "Chromosome", "start": "Start", "end": "End"}
+                    )
+                else:
+                    curr_calls = pd.read_pickle(row_ser.pickle_path)
+                nmeth_rep = curr_calls["n_meth"]
+                ntotal_rep = curr_calls["n_total"]
+                beta_rep = curr_calls["beta_value"]
+                rep_mean_d[row_ser.subject, row_ser.rep] = beta_rep.agg(
+                    ["mean", "std", "var", "median"]
+                )
+                nmeth_pop += nmeth_rep
+                ntotal_pop += ntotal_rep
+                sampled_rep_meth_d[(row_ser.subject, row_ser.rep)] = beta_rep.iloc[
+                    random_int_idx
+                ].reset_index(drop=True)
+
+            beta_values_pop = nmeth_pop / ntotal_pop
+            # Coverage quantiles for pop
+            pop_quantile_ser_d[pop] = beta_values_pop.quantile(queried_quantiles)
+            sampled_pop_meth_d[pop] = beta_values_pop.iloc[random_int_idx].reset_index(
+                drop=True
+            )
+            # full coverage series
+            pop_beta_value_d[pop] = beta_values_pop
+
+        pop_quantiles_df = pd.DataFrame(pop_quantile_ser_d)
+        pop_quantiles_df.to_pickle(pop_quantiles_wide_p)
+        pop_quantiles_df.to_csv(ut.tsv(pop_quantiles_wide_p), sep="\t")
+
+        pop_quantiles_df_long = (
+            pop_quantiles_df.rename(columns=mhstyle.nice_pop_names_d)
+            .rename_axis("Population", inplace=False, axis=1)
+            .loc[[0.1, 0.25, 0.5, 0.75, 0.9]]
+            .stack()
+            .unstack(0)
+            .reset_index()
+        )
+        pop_quantiles_df_long.columns = pop_quantiles_df_long.columns.astype(str)
+        pop_quantiles_df_long.to_pickle(pop_quantiles_long_p)
+        pop_quantiles_df_long.to_csv(ut.tsv(pop_quantiles_long_p), sep="\t")
+
+        sampled_rep_meth_df = pd.DataFrame(sampled_rep_meth_d)
+        sampled_rep_meth_df.columns.names = ["Population", "Replicate"]
+        sampled_rep_meth_df.to_pickle(sampled_rep_betavalue_p)
+        sampled_rep_meth_df.to_csv(ut.tsv(sampled_rep_betavalue_p), sep="\t")
+
+        sampled_pop_meth_df = pd.DataFrame(sampled_pop_meth_d)
+        sampled_pop_meth_df.to_pickle(sampled_pop_betavalue_p)
+        sampled_pop_meth_df.to_csv(ut.tsv(sampled_pop_betavalue_p), sep="\t")
+
+        beta_value_pop_df = pd.DataFrame(pop_beta_value_d)
+        beta_value_pop_df.to_pickle(pop_betavalue_p)
+
+        pop_beta_value_mean_df = beta_value_pop_df.agg(["mean", "std"])
+        pop_beta_value_mean_df.to_pickle(pop_betavalue_mean_df_p)
+
+        rep_beta_value_mean_df = pd.concat(rep_mean_d)
+        rep_beta_value_mean_df.to_pickle(rep_beta_value_mean_p)
+    else:
+        pop_quantiles_df = pd.read_pickle(pop_quantiles_wide_p)
+        pop_quantiles_df_long = pd.read_pickle(pop_quantiles_long_p)
+        sampled_rep_meth_df = pd.read_pickle(sampled_rep_betavalue_p)
+        sampled_pop_meth_df = pd.read_pickle(sampled_pop_betavalue_p)
+        beta_value_pop_df = pd.read_pickle(pop_betavalue_p)
+        pop_beta_value_mean_df = pd.read_pickle(pop_betavalue_mean_df_p)
+        rep_beta_value_mean_df = pd.read_pickle(rep_beta_value_mean_p)
+
+    return (
+        pop_quantiles_df,
+        pop_quantiles_df_long,
+        sampled_rep_meth_df,
+        sampled_pop_meth_df,
+        beta_value_pop_df,
+        pop_beta_value_mean_df,
+        rep_beta_value_mean_df,
+    )

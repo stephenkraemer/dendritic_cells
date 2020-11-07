@@ -36,7 +36,8 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
-from dendritic_cells.config import paper_context
+import seaborn as sns
+from dendritic_cells.config import paper_context2
 from IPython.display import Markdown, display
 from pandas.api.types import CategoricalDtype
 
@@ -63,11 +64,160 @@ def link_fn(s, markdown=True):
         print(curry_path)
 
 
+mpl.rcParams.update(paper_context2)
+
 # %matplotlib inline
+
+# ## Recompute flag
+
+recompute = False
+
+# # QC
+
+# ## Flagstats
+
+# +
+extended_flagstats_pattern = (
+    "/icgc/dkfzlsdf/project/mouse_hematopoiesis/sequencing"
+    "/whole_genome_bisulfite_tagmentation_sequencing/view-by-pid"
+    "/{pop}_{rep}/blood/paired/merged-alignment/qualitycontrol/merged/flagstats"
+    "/blood_{pop}_{rep}_merged.mdup.bam_extendedFlagstats.txt"
+)
+original_flagstats_pattern = (
+    "/icgc/dkfzlsdf/project/mouse_hematopoiesis/sequencing"
+    "/whole_genome_bisulfite_tagmentation_sequencing/view-by-pid"
+    "/{pop}_{rep}/blood/paired/merged-alignment/qualitycontrol/merged/flagstats"
+    "/blood_{pop}_{rep}_merged.mdup.bam_flagstats.txt"
+)
+file_pattern = original_flagstats_pattern
+
+flagstats_df_full = lib.collect_original_flagstats(
+    file_pattern=original_flagstats_pattern
+)
+display(flagstats_df_full.head())
+flagstats_df_full.reset_index().to_csv(results_dir + "/flagstats-full.csv")
+flagstats_df_full.to_pickle(results_dir + "/flagstats-full.p")
+print(results_dir + "/flagstats-full.csv")
+link_fn(results_dir + "/flagstats-full.csv")
+# -
+
+flagstats_selected = (
+    flagstats_df_full.loc[
+        ["HSC", "MDP", "CDP", "cMoP", "Monocytes", "pDC", "cDC CD11b", "cDC CD8a"],
+        "QC-passed reads",
+    ]
+    .unstack("Stat")
+    .drop([("HSC", "1-1"), ("HSC", "4"), ("HSC", "5")], axis=0)
+    .sort_index(ascending=False, axis=1)
+)
+display(flagstats_selected.head())
+flagstats_selected.reset_index().to_csv(
+    results_dir + "/flagstats-selected.csv", index=True
+)
+link_fn(results_dir + "/flagstats-selected.csv")
+print(results_dir + "/flagstats-selected.csv")
+
+# ## Metadata table
+
+# +
+from mouse_hema_meth.methylome.alignments_mcalls.meth_calling_paths import (
+    ds1_metadata_table_tsv,
+)
+
+# compared to ds1, we
+#  - restrict to the pops used in the papr
+#  - drop one HSC replicate
+#  - use monos-new instead of monos
+
+pops = ["cdp", "cmop", "dc-cd11b", "dc-cd8a", "hsc", "mdp", "monos", "pdc"]
+mcalls_metadata_table = (
+    pd.read_csv(ds1_metadata_table_tsv, sep="\t")
+    .set_index(["subject", "rep"])
+    .loc[pops]
+    .drop(("hsc", 4), axis=0)
+)
+
+mcalls_metadata_table.loc["monos", "bed_path"] = (
+    mcalls_metadata_table.loc["monos", "bed_path"]
+    .str.replace("monos", "monos-new")
+    .to_numpy()
+)
+mcalls_metadata_table.loc["monos", "pickle_path"] = (
+    mcalls_metadata_table.loc["monos", "pickle_path"]
+    .str.replace("monos", "monos-new")
+    .to_numpy()
+)
+# -
+
+# ## Conversion rates
+
+chh_meth = lib.gather_conversion_rate_table(mcalls_metadata_table)
+display(chh_meth.head())
+chh_meth.to_csv(results_dir + "/conversion-rates.csv")
+print(results_dir + "/conversion-rates.csv")
+link_fn(results_dir + "/conversion-rates.csv")
+
+# ## Coverage
+
+# computed in hema meth project
+pops = ["cdp", "cmop", "dc-cd11b", "dc-cd8a", "hsc", "mdp", "monos", "pdc"]
+pop_coverage_p = "/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/cohort_results/analyses/hierarchy/mcalling/qc/coverage/n-total_pop-level.p"
+pop_ntotal = pd.read_pickle(pop_coverage_p)[pops]
+pop_ntotal
+
+# Restrict coverage to the three already published HSC replicates
+
+n_total = pd.Series(0, index=pop_ntotal.index, dtype='i8')
+for fp in mcalls_metadata_table.loc['hsc', 'pickle_path'].tolist():
+    n_total += pd.read_pickle(fp)['n_total']
+pop_ntotal['hsc'] = n_total
+
+coverage_mean_sd = pop_ntotal.describe().T
+coverage_mean_sd.index.name = 'Population'
+coverage_mean_sd.reset_index().to_csv(results_dir + '/coverage-mean-sd.csv')
+print(results_dir + '/coverage-mean-sd.csv')
+link_fn(results_dir + '/coverage-mean-sd.csv')
+
+# ## Average methylation
+
+(
+    pop_quantiles_df,
+    pop_quantiles_df_long,
+    sampled_rep_meth_df,
+    sampled_pop_meth_df,
+    beta_value_pop_df,
+    pop_beta_value_mean_df,
+    rep_beta_value_mean_df,
+) = lib.gather_meth_level_data(
+    mcalls_metadata_table=mcalls_metadata_table.reset_index(),
+    recompute=recompute,
+    pop_quantiles_wide_p=results_dir + "/pop_beta-value_quantiles_wide.p",
+    pop_quantiles_long_p=results_dir + "/pop_beta-value_quantiles_long.p",
+    sampled_rep_betavalue_p=results_dir + "/pop_beta-value_sampled_rep.p",
+    sampled_pop_betavalue_p=results_dir + "/pop_beta-value_sampled_pop.p",
+    pop_betavalue_p=results_dir + "/pop_beta-values_all-cpgs.p",
+    pop_betavalue_mean_df_p=results_dir + "/pop_beta-values_mean-sd.p",
+    rep_beta_value_mean_p=results_dir + "/rep_beta-values_mean-sd.p",
+)
+
+rep_beta_value_mean_df_long = (
+    rep_beta_value_mean_df.unstack()
+    .rename_axis(["Population", "Replicate"], axis=0)
+    .reset_index()
+)
+rep_beta_value_mean_df_long
+
+rep_beta_value_mean_df_long.to_csv(results_dir + "/rep-beta-values_mean-sd.csv")
+link_fn(results_dir + "/rep-beta-values_mean-sd.csv")
 
 # # Retrieve and format input data
 
 # Get cluster ids and dmr boundaries to TSV format, load into python, adjust column names and convert Chromosome to string categorical
+
+dmr_calls_dir = (
+    "/icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/gNs4xcMJscaLLwlt/dmr-calls"
+)
+dmr_calls_dir
 
 cluster_ids_rds = results_dir + "/nW05rWZyjo0wFEVK.rds"
 cluster_ids_tsv = results_dir + "/nW05rWZyjo0wFEVK.tsv"
@@ -88,6 +238,19 @@ cluster_ids_rds
 # -
 
 cluster_ids_beta_values_dmr_coords = pd.read_csv(cluster_ids_tsv, sep="\t")
+
+cluster_ids_beta_values_dmr_coords[
+    [
+        "hsc",
+        "cdp",
+        "cmop",
+        "dc_cd11b",
+        "dc_cd8a",
+        "mono",
+        "mdp",
+        "pdc",
+    ]
+].isnull().sum()
 
 chrom_dtype = CategoricalDtype(
     np.sort(np.arange(1, 20).astype(str)),
@@ -116,6 +279,101 @@ dmrs
 cluster_ids_df = cluster_ids_beta_values_dmr_coords[["cluster"]]
 cluster_ids_df
 
+# # Characterize clustering
+
+beta_values = cluster_ids_beta_values_dmr_coords[
+    [
+        "hsc",
+        "mdp",
+        "cdp",
+        "cmop",
+        "mono",
+        "pdc",
+        "dc_cd11b",
+        "dc_cd8a",
+    ]
+].dropna(how="any", axis=0)
+zscores = ut.row_zscores(beta_values)
+cluster_ids_no_nas = cluster_ids_df.loc[beta_values.index].copy()
+
+beta_values.isnull().sum()
+
+
+# ## Heatmap
+
+import clustering_tools as ct
+import mouse_hema_meth.utils as ut
+
+global_row_order_df = ct.hclust_within_clusters(
+    data=zscores,
+    cluster_ids_df=cluster_ids_no_nas,
+    metric="euclidean",
+    method="ward",
+    n_jobs=9,
+)
+
+png_path = results_dir + "/heatmap_zscores_hclust-within-clusters.png"
+lib.create_clustermaps_with_special_order(
+    df=zscores,
+    cluster_ids_df=cluster_ids_no_nas,
+    png_path=png_path,
+    cmap="RdBu_r",
+    guide_title="Z-score(% Methylation)",
+    global_row_order_df=global_row_order_df,
+    figsize=(10 / 2.54, 10 / 2.54),
+    n_per_cluster=500,
+)
+link_fn(png_path)
+link_fn(png_path.replace(".png", ".pdf"))
+
+png_path = results_dir + "/heatmap_beta-values_hclust-within-clusters.png"
+lib.create_clustermaps_with_special_order(
+    df=beta_values,
+    cluster_ids_df=cluster_ids_no_nas,
+    png_path=png_path,
+    cmap="YlOrBr",
+    guide_title="% Methylation",
+    global_row_order_df=global_row_order_df,
+    figsize=(10 / 2.54, 10 / 2.54),
+    n_per_cluster=500,
+)
+link_fn(png_path)
+link_fn(png_path.replace(".png", ".pdf"))
+
+# ## Cluster sizes
+
+fig, ax = plt.subplots(
+    1, 1, constrained_layout=True, dpi=180, figsize=(5 / 2.54, 5 / 2.54)
+)
+cluster_sizes = cluster_ids_df["cluster"].value_counts()
+display(cluster_sizes)
+cluster_sizes.plot.bar(ax=ax)
+ax.set(ylabel="Frequency", xlabel="Cluster ID")
+fig.savefig(results_dir + "/cluster-sizes.pdf")
+link_fn(results_dir + "/cluster-sizes.pdf")
+
+# ## Gain/loss stratified counts
+
+# not all dmrs have only one sign (deltas < 0.1 are not considered here)
+
+masked_signs = np.sign(
+    beta_values.subtract(beta_values["hsc"], axis=0).mask(lambda df: df.abs().le(0.1))
+)
+
+masked_signs.nunique(axis=1).ne(1).sum()
+
+# we can use the max delta
+
+max_delta_for_each_dmr = beta_values.subtract(beta_values["hsc"], axis=0).apply(
+    lambda ser: ser.loc[ser.abs().idxmax()], axis=1
+)
+max_delta_for_each_dmr
+
+gain_loss_classif = np.sign(max_delta_for_each_dmr).replace({1: "Gain", -1: "Loss"})
+gain_loss_classif
+
+gain_loss_classif.value_counts()
+
 # # Gene annotation
 
 # ## Computation
@@ -131,7 +389,7 @@ anno_res_paths_d = lib.run_gtfanno(
     output_trunk_path=results_dir + "/dmr-gene-annos",
     promoter_def=(-5000, 1000),
     distant_cis_regulatory_domain_def=(-50000, -5000),
-    recompute=True,
+    recompute=False,
 )
 
 # ## Paths to detailed annotations
@@ -146,12 +404,15 @@ for k, v in anno_res_paths_d.items():
 
 # One row per DMR, one feature class per DMR (one of promoter, exon, etc.)
 
-merged_annos = lib.merge_annos(
-    gtfanno_result_fp=anno_res_paths_d["primary_annos_p"],
-    grange_and_feature_ids=dmrs,
-)
-merged_annos.to_pickle(results_dir + "/merged-gene-annos.p")
-merged_annos.to_csv(results_dir + "/merged-gene-annos.tsv", sep="\t", index=False)
+if recompute:
+    merged_annos = lib.merge_annos(
+        gtfanno_result_fp=anno_res_paths_d["primary_annos_p"],
+        grange_and_feature_ids=dmrs,
+    )
+    merged_annos.to_pickle(results_dir + "/merged-gene-annos.p")
+    merged_annos.to_csv(results_dir + "/merged-gene-annos.tsv", sep="\t", index=False)
+else:
+    merged_annos = pd.read_pickle(results_dir + "/merged-gene-annos.p")
 
 merged_annos
 
@@ -163,7 +424,51 @@ link_fn(results_dir + "/merged-gene-annos.tsv")
 
 # note about UTRs: i double checked the UTR calling; and I have set 5'-UTR precedence higher than promoters, so this is not an effect of covering 5'-UTRs with promoters. The picture is very similar to global hematopoiesis in general.
 
-merged_annos['feat_class'].value_counts().sort_values().plot.bar()
+merged_annos["feat_class"].value_counts().sort_values().plot.bar()
+
+# # Concatenate all available annotations
+
+all_annos = pd.concat(
+    [cluster_ids_beta_values_dmr_coords, merged_annos[["gene_name", "feat_class"]]],
+    axis=1,
+)[
+    [
+        "Chromosome",
+        "Start",
+        "End",
+        "cluster",
+        "gene_name",
+        "feat_class",
+        "hsc",
+        "cdp",
+        "cmop",
+        "dc_cd11b",
+        "dc_cd8a",
+        "mono",
+        "mdp",
+        "pdc",
+    ]
+]
+all_annos_tsv = results_dir + "/all-annos.tsv"
+all_annos.to_csv(all_annos_tsv, sep="\t", index=False, header=True)
+all_annos.to_parquet(all_annos_tsv.replace(".tsv", ".parquet"))
+all_annos.head()
+
+print(all_annos_tsv)
+link_fn(all_annos_tsv)
+
+# ## Promoter DMR annos only
+
+promoter_genes = all_annos.query('feat_class == "Promoter"').sort_values(
+    ["cluster", "gene_name"]
+)
+promoter_genes_tsv = results_dir + "/promoter_genes.tsv"
+promoter_genes.to_csv(promoter_genes_tsv, sep="\t", index=False, header=True)
+promoter_genes.to_parquet(promoter_genes_tsv.replace(".tsv", ".parquet"))
+promoter_genes.head()
+
+print(promoter_genes_tsv)
+link_fn(promoter_genes_tsv)
 
 # # Geneset enrichment
 
@@ -357,9 +662,7 @@ for filter_name in ["promoter", "gene_regions", "all_annotated"]:
     display(overlap_counts)
     print("% Hits")
     display(
-        overlap_counts.divide(
-            cluster_sizes, axis=0
-        ) * 100,
+        overlap_counts.divide(cluster_sizes, axis=0) * 100,
     )
     print(curr_cluster_overlap_counts_tsv)
     link_fn(curr_cluster_overlap_counts_tsv)
@@ -394,3 +697,70 @@ cluster_marker_genes_tsv = results_dir + "/cluster-marker-genes.tsv"
 cluster_marker_genes_df.to_csv(cluster_marker_genes_tsv, sep="\t")
 cluster_marker_genes_tsv
 link_fn(cluster_marker_genes_tsv)
+
+# # Pairwise DMR analysis
+
+# %load_ext rpy2.ipython
+
+# +
+import rpy2
+import rpy2.robjects as ro
+from rpy2.robjects.packages import importr
+
+utils = importr("utils")
+base = importr("base")
+# -
+
+import rpy2.robjects.pandas2ri as pandas2ri
+
+pw_dmr_calls = pd.DataFrame(
+    {"rds_path": dmr_calls_dir + "/" + pd.Series(os.listdir(dmr_calls_dir))}
+)
+pw_dmr_calls["pop"] = pw_dmr_calls["rds_path"].str.extract(
+    r".*_dmrs_hsc_vs_([\w-]+)_0.01", expand=False
+)
+pw_dmr_calls
+
+gain_loss_counts = pd.DataFrame(-1, columns=["Gain", "Loss"], index=pw_dmr_calls["pop"])
+for _unused, row_ser in pw_dmr_calls.iterrows():
+    # chr start end  length   nCG  meanMethy1  meanMethy2 diff.Methy  areaStat
+    gain_loss_for_pop = (
+        np.sign(
+            pandas2ri.rpy2py(base.readRDS(row_ser["rds_path"])).eval(
+                "meanMethy2 - meanMethy1"
+            )
+        )
+        .value_counts()
+        .sort_index()
+        .set_axis(["Loss", "Gain"])
+    )
+    gain_loss_counts.loc[row_ser["pop"]] = gain_loss_for_pop
+gain_loss_counts = gain_loss_counts.sort_values("Loss")
+
+gain_loss_counts.head()
+
+pw_counts_plot_df = (
+    gain_loss_counts.stack()
+    .reset_index()
+    .set_axis(["Population", "Direction", "No. of DMRs"], axis=1)
+)
+pw_counts_plot_df
+
+fig, ax = plt.subplots(
+    1, 1, dpi=300, constrained_layout=True, figsize=(4 / 2.54, 3 / 2.54)
+)
+sns.barplot(
+    x="Population",
+    y="No. of DMRs",
+    hue="Direction",
+    palette={"Loss": "Blue", "Gain": "Red"},
+    data=pw_counts_plot_df,
+    order=gain_loss_counts.index,
+)
+ax.legend(loc="upper left", bbox_to_anchor=(1.05, 1))
+ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
+ax.set_yticks(np.arange(0, 40_000, 5_000))
+ax.set_ylim(0, 32_000)
+ax.set(xlabel="")
+fig.savefig(results_dir + "gain-loss-pw-counts-barplot.pdf")
+link_fn(results_dir + "gain-loss-pw-counts-barplot.pdf")
