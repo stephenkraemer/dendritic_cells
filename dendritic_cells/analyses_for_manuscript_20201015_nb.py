@@ -5,11 +5,11 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.6.0
+#       jupytext_version: 1.7.0
 #   kernelspec:
-#     display_name: Python [conda env:mouse_hema_meth_py37] *
+#     display_name: Python [conda env:mouse_hema_meth_py37_mamba_full] *
 #     language: python
-#     name: conda-env-mouse_hema_meth_py37-py
+#     name: conda-env-mouse_hema_meth_py37_mamba_full-py
 # ---
 
 # # Setup
@@ -279,7 +279,7 @@ dmrs
 cluster_ids_df = cluster_ids_beta_values_dmr_coords[["cluster"]]
 cluster_ids_df
 
-# # Characterize clustering
+# ## Meth levels in DMRs
 
 beta_values = cluster_ids_beta_values_dmr_coords[
     [
@@ -295,6 +295,19 @@ beta_values = cluster_ids_beta_values_dmr_coords[
 ].dropna(how="any", axis=0)
 zscores = ut.row_zscores(beta_values)
 cluster_ids_no_nas = cluster_ids_df.loc[beta_values.index].copy()
+
+beta_values.describe().reset_index().to_csv(results_dir + '/dmr-beta-value_agg-stats.tsv')
+ut.dkfz_link(results_dir + '/dmr-beta-value_agg-stats.tsv')
+
+fig, ax = plt.subplots(1, 1, figsize=(ut.cm(8), ut.cm(8)), constrained_layout=True, dpi=180)
+sns.violinplot(data=beta_values.sample(1000))
+ut.save_and_display(fig, png_path=results_dir + '/global-dmr-beta-values_violin.png')
+
+fig, ax = plt.subplots(1, 1, figsize=(ut.cm(8), ut.cm(8)), constrained_layout=True, dpi=180)
+sns.boxplot(data=beta_values.sample(1000), showfliers=False)
+ut.save_and_display(fig, png_path=results_dir + '/global-dmr-beta-values_boxplot.png')
+
+# # Characterize clustering
 
 beta_values.isnull().sum()
 
