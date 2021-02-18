@@ -1,6 +1,6 @@
 # executed with mouse_hema_meth_py37_mamba_full
 
-from joblib import Parallel, delayed
+import jobsub
 import subprocess
 import pandas as pd
 import mouse_hema_meth.utils as ut
@@ -28,9 +28,9 @@ def main():
     samples = [
         "mdp_1",
         "mdp_2",
-        "monos_1",
-        "monos_2",
-        "monos_3",
+        "monos-new_1",
+        "monos-new_2",
+        "monos-new_3",
         "cmop_1",
         "cmop_2",
         "cdp_1",
@@ -84,56 +84,61 @@ def main():
     # Get FASTQ md5sums
     # =================
 
-    # had to use local parallalization, because the cluster had a problem
-    # this took ~ 3h
-    # with cluster parallelization it worked for almost all files, so I can say
-    # that it takes only a few min - should be used in the future
 
-    """ cluster parallelization code - non-functional, 
-    because I was trying to find an error, that was actually on the cluster side
-    
-    lsf_setup_commands = '''\
+
+    lsf_setup_commands = """\
             source ~/bash_profile
             conda activate mouse_hema_meth_py37_mamba_full
-    '''
-    
-    # jobs = []
-    # for sample, row_ser in metadata_table.iloc[0:2].iterrows():
-    #     print(sample)
-    #     job = jobsub.LsfJob(
-    #         func=lib.get_md5sum2,
-    #         lsf_resources=jobsub.LsfResources(
-    #             average_memory_gb=2,
-    #             max_memory_gb=4,
-    #             walltime="00:10",
-    #             logdir="/home/kraemers/temp/logs",
-    #             name=f"md5sum_{row_ser['full_filename']}",
-    #             cores=1,
-    #         ),
-    #         kwargs=dict(fastq_fp=row_ser["path"], sample=row_ser["full_filename"]),
-    #     )
-    #     jobs.append(job.run_locally())
-    #     # job.submit(
-    #     #     tmpdir=PROJECT_TEMPDIR, setup_commands=lsf_setup_commands, dryrun=False
-    #     # )
-    #     # time.sleep(2)
-    #     # jobs.append(job)
-    # # jobsub.wait_for_jobs(jobs)
-    
     """
 
-    results = Parallel(n_jobs=24)(
-        delayed(lib.get_md5sum2)(row_ser["path"], row_ser["full_filename"])
-        for sample, row_ser in fastq_metadata_table.iterrows()
-    )
+    jobs = []
+    for sample, row_ser in fastq_metadata_table.iterrows():
+        print(sample)
+        job = jobsub.LsfJob(
+            func=lib.get_md5sum2,
+            lsf_resources=jobsub.LsfResources(
+                average_memory_gb=1,
+                max_memory_gb=1,
+                walltime="01:00",
+                logdir="/home/kraemers/temp/logs",
+                name=f"md5sum_{row_ser['full_filename']}",
+                cores=1,
+            ),
+            kwargs=dict(fastq_fp=row_ser["path"], sample=row_ser["full_filename"]),
+        )
+        job.submit(
+            tmpdir=PROJECT_TEMPDIR, setup_commands=lsf_setup_commands, dryrun=False
+        )
+        jobs.append(job)
+    jobsub.wait_for_jobs(jobs)
 
-    full_filenames, md5sum_lines = zip(*results)
-    md5sum_lines_split = [line.strip().split()[::-1] for line in md5sum_lines]
-    raw_data_df = pd.DataFrame(md5sum_lines_split, columns=["filename", "md5sum"])
-    Path(results_dir + "/4fL3D7henDSKzAtJ.tsv").write_text(
-        raw_data_df.apply(lambda ser: ser.str.cat(sep="\t"), axis=1).str.cat(sep='\n')
+    results = [job.get_result(delete_temp_file=False) for job in jobs]
+    full_filenames_fastq_md5_tu, md5res_str = zip(*results)
+    md5sum_lines_split = [line.strip().split() for line in md5res_str]
+    md5_res_df = pd.DataFrame(md5sum_lines_split, columns=['md5sum', 'abspath'])
+    md5_res_df['full_filename'] = full_filenames_fastq_md5_tu
+    assert md5_res_df.notnull().all().all()
+    md5_res_df[['full_filename', 'md5sum']].to_csv(
+        results_dir + '/abcdeaPLoB3fQorpulFFH.tsv', sep='\t', index=False
     )
-    ut.dkfz_link(results_dir + "/4fL3D7henDSKzAtJ.tsv")
+    ut.dkfz_link(results_dir + '/abcdeaPLoB3fQorpulFFH.tsv')
+
+    # initally had to use local parallalization, because the cluster had a problem
+    # this took ~ 3h
+    # results = Parallel(n_jobs=24)(
+    #     delayed(lib.get_md5sum2)(row_ser["path"], row_ser["full_filename"])
+    #     for sample, row_ser in fastq_metadata_table.iterrows()
+    # )
+    # NOTE: there is an error in this code - it does not add the correct full_filename to the output table, which needs to be in the metadata sheet
+    # also, in the end i just wrote out the df to csv, this can now be simplified to DataFrame.to_csv
+    # full_filenames, md5sum_lines = zip(*results)
+    # md5sum_lines_split = [line.strip().split()[::-1] for line in md5sum_lines]
+    # # this dataframe needs a full_filename column
+    # raw_data_df = pd.DataFrame(md5sum_lines_split, columns=["filename", "md5sum"])
+    # Path(results_dir + "/4fL3D7henDSKzAtJ.tsv").write_text(
+    #     raw_data_df.apply(lambda ser: ser.str.cat(sep="\t"), axis=1).str.cat(sep="\n")
+    # )
+    # ut.dkfz_link(results_dir + "/4fL3D7henDSKzAtJ.tsv")
 
 
     # Get md5sums for mcalls
@@ -181,45 +186,59 @@ def main():
     )
     ut.dkfz_link(results_dir + "/8LbKdGx7hhpQvjyw.tsv")
 
-
     # PE experiment info
     # ==================
-    fastq_metadata_table['read'] = fastq_metadata_table['path'].str.extract(r'.*_R(\d).fastq.gz$')
-    fastq_metadata_table['stem'] = fastq_metadata_table['path'].str.extract(
-        r'(.*)_R\d.fastq.gz$')
-    pe_info_df = (fastq_metadata_table
-                  .sort_values('read')
-                  .groupby('stem')
-                  ['full_filename']
-                  .agg(lambda ser: ser.str.cat(sep='\t'))
-                  )
-    Path(results_dir + '/XL72U2utUGgpYnLU.tsv').write_text(
-        pe_info_df.str.cat(sep='\n')
+    fastq_metadata_table["read"] = fastq_metadata_table["path"].str.extract(
+        r".*_R(\d).fastq.gz$"
     )
-    ut.dkfz_link(results_dir + '/XL72U2utUGgpYnLU.tsv')
+    assert fastq_metadata_table['read'].notnull().all()
+    fastq_metadata_table["stem"] = fastq_metadata_table["path"].str.extract(
+        r"(.*)_R\d.fastq.gz$"
+    )
+    assert fastq_metadata_table['stem'].notnull().all()
 
+    def agg_pe_filenames(ser):
+        assert ser.shape[0] == 2
+        return ser.str.cat(sep="\t")
+
+    pe_info_df = (
+        fastq_metadata_table.sort_values("read")
+        .groupby("stem")["full_filename"]
+        .agg(agg_pe_filenames)
+    )
+
+    Path(results_dir + "/XL72U2utUGgpYnLU.tsv").write_text(pe_info_df.str.cat(sep="\n"))
+    ut.dkfz_link(results_dir + "/XL72U2utUGgpYnLU.tsv")
 
     # Collect all data in one folder for upload to GEO
     # ================================================
 
-    geo_upload_folder = results_dir + "/OV3eavXF6PkzOpYz/dc-methylomes"
+    # geo_upload_folder = results_dir + "/OV3eavXF6PkzOpYz/dc-methylomes"
+    geo_upload_folder = results_dir + "/kgBLAl9d1HSGDSCI/dc-methylomes"
     os.makedirs(geo_upload_folder, exist_ok=True)
 
     # FASTQs
-    for sample, row_ser in fastq_metadata_table.iterrows():
+    for sample, row_ser in fastq_metadata_table.loc[[
+        'monos-new_1',
+        'monos-new_2',
+        'monos-new_3',
+    ]].iterrows():
         link_name = geo_upload_folder + "/" + row_ser["full_filename"]
         try:
             os.remove(link_name)
         except FileNotFoundError:
             pass
         os.symlink(row_ser["path"], link_name)
-    assert fastq_metadata_table['full_filename'].duplicated().sum() == 0
+    assert fastq_metadata_table["full_filename"].duplicated().sum() == 0
 
     # Mcalls
     for idx, row_ser in mcalls_metadata_table.iterrows():
-        link_name = geo_upload_folder + "/" + row_ser["filename"]
+        curr_filename = row_ser['filename'].replace('monos-new', 'monos')
+        link_name = geo_upload_folder + "/" + curr_filename
         try:
             os.remove(link_name)
         except FileNotFoundError:
             pass
         os.symlink(row_ser["path"], link_name)
+
+

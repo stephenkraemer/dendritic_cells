@@ -13,7 +13,8 @@ scp sra-2.ssh.priv kraemers@odcf-transfer.dkfz.de:/icgc/dkfzlsdf/analysis/hs_ont
 
 # - failed with "disk write failed", a known problem. Solved by submitting all files individually in for loop
 
-cd /icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/NlIosmWpSIbw7MA8/OV3eavXF6PkzOpYz/dc-methylomes
+#cd /icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/NlIosmWpSIbw7MA8/OV3eavXF6PkzOpYz/dc-methylomes
+cd /icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/NlIosmWpSIbw7MA8/kgBLAl9d1HSGDSCI/dc-methylomes
 for fp in *.fastq.gz; do
     ascp \
         -i /icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/NlIosmWpSIbw7MA8/OV3eavXF6PkzOpYz/ssh/sra-2.ssh.priv \
@@ -52,6 +53,8 @@ done
 # Metadata sheet name was
 # metadata_dendritic-cells-rosenbauer.xlsx
 
-mput /icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/NlIosmWpSIbw7MA8/OV3eavXF6PkzOpYz/dc-methylomes/mcalls_*
-mput /icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/NlIosmWpSIbw7MA8/OV3eavXF6PkzOpYz/dc-methylomes/metadata_dendritic-cells-rosenbauer.xlsx
+#mput /icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/NlIosmWpSIbw7MA8/OV3eavXF6PkzOpYz/dc-methylomes/mcalls_*
+#mput /icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/NlIosmWpSIbw7MA8/OV3eavXF6PkzOpYz/dc-methylomes/metadata_dendritic-cells-rosenbauer.xlsx
 
+mput /icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/NlIosmWpSIbw7MA8/kgBLAl9d1HSGDSCI/dc-methylomes/mcalls_*
+mput /icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/NlIosmWpSIbw7MA8/kgBLAl9d1HSGDSCI/dc-methylomes/metadata_dendritic-cells-rosenbauer.xlsx
