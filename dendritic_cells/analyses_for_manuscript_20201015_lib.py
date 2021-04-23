@@ -1148,3 +1148,295 @@ def gather_meth_level_data(
         pop_beta_value_mean_df,
         rep_beta_value_mean_df,
     )
+
+
+import methlevels as ml
+
+
+def get_rep_meth_levels(mcalls_metadata_table, dmrs, n_cores) -> ml.MethStats:
+
+    pop_order = [
+        "hsc",
+        "mdp",
+        "cdp",
+        "cmop",
+        "monos",
+        "pdc",
+        "dc-cd11b",
+        "dc-cd8a",
+    ]
+
+    bed_calls_ds1 = ml.BedCalls(
+        metadata_table=mcalls_metadata_table.reset_index(),
+        tmpdir=mhpaths.project_temp_dir,
+        #     pop_order=mcalls_metadata_table['sample_id'],
+        pop_order=pop_order,
+        beta_value_col=6,
+        n_meth_col=7,
+        n_total_col=8,
+    )
+
+    meth_stats_rep = bed_calls_ds1.aggregate(
+        intervals_df=dmrs,
+        n_cores=n_cores,
+        subjects=None,
+        additional_index_cols=None,
+    )
+
+
+import seaborn as sns
+import scipy.stats
+from itertools import combinations, product
+
+import rpy2.robjects as ro
+from rpy2.robjects.packages import importr
+from rpy2.robjects.vectors import StrVector, IntVector
+
+from functools import partial
+import rpy2.ipython.html
+
+rpy2.ipython.html.init_printing()
+rpy2.ipython.html.html_rdataframe = partial(
+    rpy2.ipython.html.html_rdataframe, table_class="docutils"
+)
+
+
+from rpy2.robjects.conversion import localconverter
+from rpy2.robjects import pandas2ri, numpy2ri
+
+import mouse_hema_meth.rpy2_utils as rpy2_utils
+
+numpy2ri.activate()
+pandas2ri.activate()
+
+import rpy2.robjects.lib.ggplot2 as gg
+from rpy2.ipython.ggplot import image_png
+
+
+# def image_png2(p, figsize):
+#     display(image_png(p, figsize[0] * 72, figsize[1] * 72))
+
+
+import mouse_hema_meth.rpy2_styling as mh_rpy2_styling
+
+# lemon = importr("lemon")
+
+NULL = ro.NULL
+import rpy2.rinterface as ri
+
+NA = ri.NA_Logical
+
+
+def get_meth_stats_arrays(meth_stats_rep):
+
+    beta_values = meth_stats_rep.counts.loc[:, pd.IndexSlice[:, :, "beta_value"]]
+    beta_values = beta_values.droplevel(-1, axis=1).reset_index(drop=True)
+
+    q1_median_q3_rep_wide = (
+        beta_values.describe(percentiles=[0.01, 0.25, 0.5, 0.75, 0.99])
+        .T.reset_index()
+        .rename(
+            columns={
+                "Subject": "Population",
+                "25%": "Q1",
+                "50%": "median",
+                "75%": "Q3",
+                "1%": "min1",
+                "99%": "max99",
+            }
+        )
+    )
+    q1_median_q3_rep_wide
+
+
+
+
+    q1_median_q3_rep_long = (
+        beta_values.describe()
+        .T.reset_index()
+        .rename(
+            columns={"Subject": "Population", "25%": "Q1", "50%": "median", "75%": "Q3", 'mean': 'mean'}
+        )[["Population", "Replicate", "Q1", "median", "Q3", 'mean']]
+        .set_index(["Population", "Replicate"])
+        .stack()
+        .to_frame()
+        .reset_index()
+        .set_axis(["Population", "Replicate", "stat", "value"], axis=1)
+    )
+    q1_median_q3_rep_long
+
+    g = sns.catplot(
+        x="Population",
+        y="value",
+        hue="Replicate",
+        data=q1_median_q3_rep_long,
+        kind="strip",
+    )
+
+    df = q1_median_q3_rep_wide
+    pops = ["pdc", "dc-cd11b", "dc-cd8a"]
+
+    stats_l = []
+    for stat, (popa, popb) in product(["Q1", "median", "Q3"], product(pops, pops)):
+        print(stat, popa, popb)
+
+        popa = "hsc"
+        popb = "pdc"
+        stat = "median"
+
+        mw_u, pvalue = scipy.stats.mannwhitneyu(
+            [0.8, 0.81, 0.79],
+            [0.4, 0.39, 0.41],
+            # df.query("Population == @popa")[stat].to_numpy(),
+            # df.query("Population == @popb")[stat].to_numpy(),
+            use_continuity=True,
+            alternative="two-sided",
+        )
+        pvalue
+
+        stats_l.append([stat, popa, popb, mw_u, pvalue])
+    stats_df = pd.DataFrame(stats_l).set_axis(
+        ["stat", "popA", "popB", "U", "pvalue"], axis=1
+    )
+
+    kruskal_format_means = pd.pivot(
+        q1_median_q3_rep_wide.query("Population in @pops"),
+        index="Population",
+        columns="Replicate",
+        values="mean",
+    )
+
+    import scikit_posthocs
+
+    stat, p_value = scipy.stats.kruskal(
+        *[kruskal_format_means.loc[pop].to_numpy() for pop in pops],
+    )
+
+    dunn_res_df = scikit_posthocs.posthoc_dunn(
+        kruskal_format_means.to_numpy(),
+        p_adjust='fdr_bh',
+        sort=True,
+    )
+
+    stat, pvalue = scipy.stats.f_oneway(
+        *[kruskal_format_means.loc[pop].to_numpy() for pop in pops],
+    )
+
+
+    import statsmodels
+
+
+    df = kruskal_format_means.stack().reset_index()
+
+    kruskal_format_means
+
+
+    res = statsmodels.stats.multicomp.pairwise_tukeyhsd(
+        df[0],
+        df['Population'].to_numpy(),
+        alpha=0.05)
+
+    res.pvalues
+    res.summary()
+
+
+    # wilcox.test(c(0.8, 0.79, 0.81), c(0.4, 0.39, 0.41), paired=F, exact=F)
+
+    plot_pops = ["pdc", "dc-cd8a", "dc-cd11b"]
+
+    results_dir = "/icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/gNs4xcMJscaLLwlt"
+    point_plot_quartiles_png = results_dir + "/point-plot-quartiles.png"
+
+    q1_median_q3_rep_wide
+
+    ggplot_data = (
+        q1_median_q3_rep_long.query("Population in @plot_pops")
+        .sort_values(
+            "value",
+            ascending=False,
+        )
+        .groupby(["Population", "stat"])
+        .apply(lambda df: df.assign(group_order=np.arange(1, df.shape[0] + 1)))
+    )
+
+    g = (
+        gg.ggplot(ggplot_data)
+        + gg.aes_string(x="Population", y="value", group="group_order", color="stat")
+        + gg.geom_point(position=gg.position_dodge(width=0.5), size=1)
+        + mh_rpy2_styling.gg_paper_theme
+        + gg.labs(y='Methylation (%)', x='')
+    )
+    a = 3
+
+    rpy2_utils.image_png2(g, (ut.cm(6), ut.cm(6)))
+
+    ut.save_and_display(
+        g,
+        png_path=point_plot_quartiles_png,
+        # additional_formats=tuple(),
+        height=ut.cm(6),
+        width=ut.cm(6),
+    )
+
+    q1_median_q3_rep_wide
+
+    g = (
+        gg.ggplot(
+            q1_median_q3_rep_wide.query("Population in @plot_pops").assign(
+                sample=lambda df: df["Population"].astype(str)
+                + df["Replicate"].astype(str)
+            )
+        )
+        + gg.geom_boxplot(
+            gg.aes_string(
+                x="Population",
+                fill="Population",
+                group="sample",
+                lower="Q1",
+                upper="Q3",
+                middle="median",
+                ymin="min1",
+                ymax="max99",
+                # position=gg.position_dodge(width=0.5),
+            ),
+            stat="identity",
+        )
+        # + mh_rpy2_styling.gg_paper_theme
+        + gg.theme(axis_text_x=gg.element_text(angle=90, hjust=1))
+        + gg.scale_fill_brewer(guide=False)
+    )
+    a = 3
+    ut.save_and_display(
+        g,
+        png_path=point_plot_quartiles_png,
+        additional_formats=tuple(),
+        height=ut.cm(6),
+        width=ut.cm(7),
+    )
+    # image_png2(g, (ut.cm(12), ut.cm(12)))
+
+    beta_values.loc[:, ("hsc", "1")]
+
+
+def _format_stats_df(df, index_name):
+
+    new_column_names = (
+        "Population" if df.columns.nlevels == 1 else ["Population", "Replicate"]
+    )
+    return (
+        df.reset_index(drop=True)
+        .pipe(_stringify_columns)
+        .rename_axis(index=index_name, columns=new_column_names)
+        .rename(columns=mhstyle.nice_pop_names_d, level=0)
+    )
+
+
+def _stringify_columns(df):
+    if df.columns.nlevels == 1:
+        return df.set_axis(df.columns.astype(str), axis=1, inplace=False)
+    else:
+        idx = pd.MultiIndex.from_arrays(
+            [df.columns.get_level_values(0).astype(str), df.columns.get_level_values(1)]
+        )
+        df.columns = idx
+        return df

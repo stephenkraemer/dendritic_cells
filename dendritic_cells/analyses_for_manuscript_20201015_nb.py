@@ -172,11 +172,23 @@ for fp in mcalls_metadata_table.loc['hsc', 'pickle_path'].tolist():
     n_total += pd.read_pickle(fp)['n_total']
 pop_ntotal['hsc'] = n_total
 
+# Update monos to use the old monos
+
+n_total = pd.Series(0, index=pop_ntotal.index, dtype='i8')
+for fp in mcalls_metadata_table.loc['monos', 'bed_path'].tolist():
+    print(fp)
+    n_total += pd.read_csv(fp, sep='\t')['n_total']
+    print(n_total.mean())
+pop_ntotal['monos'] = n_total
+
 coverage_mean_sd = pop_ntotal.describe().T
+coverage_mean_sd
+
 coverage_mean_sd.index.name = 'Population'
-coverage_mean_sd.reset_index().to_csv(results_dir + '/coverage-mean-sd.csv')
-print(results_dir + '/coverage-mean-sd.csv')
-link_fn(results_dir + '/coverage-mean-sd.csv')
+coverage_mean_sd_tsv = results_dir + '/coverage-mean-sd2.csv'
+coverage_mean_sd.reset_index().to_csv(coverage_mean_sd_tsv, sep='\t')
+print(coverage_mean_sd_tsv)
+link_fn(coverage_mean_sd_tsv)
 
 # ## Average methylation
 
@@ -299,9 +311,15 @@ cluster_ids_no_nas = cluster_ids_df.loc[beta_values.index].copy()
 beta_values.describe().reset_index().to_csv(results_dir + '/dmr-beta-value_agg-stats.tsv')
 ut.dkfz_link(results_dir + '/dmr-beta-value_agg-stats.tsv')
 
-fig, ax = plt.subplots(1, 1, figsize=(ut.cm(8), ut.cm(8)), constrained_layout=True, dpi=180)
-sns.violinplot(data=beta_values.sample(1000))
+fig, ax = plt.subplots(1, 1, figsize=(ut.cm(8), ut.cm(5)), constrained_layout=True, dpi=180)
+sns.violinplot(data=beta_values.sample(1000), cut=0, inner='box', width=0.9)
+ax.set_ylabel('DMR methylation')
 ut.save_and_display(fig, png_path=results_dir + '/global-dmr-beta-values_violin.png')
+
+fig, ax = plt.subplots(1, 1, figsize=(ut.cm(3), ut.cm(5)), constrained_layout=True, dpi=180)
+sns.violinplot(data=beta_values[['pdc', 'dc_cd11b', 'dc_cd8a']].sample(1000), cut=0, inner='box', width=0.9)
+ax.set_ylabel('DMR methylation')
+ut.save_and_display(fig, png_path=results_dir + '/global-dmr-beta-values_violin_dcs-only.png')
 
 fig, ax = plt.subplots(1, 1, figsize=(ut.cm(8), ut.cm(8)), constrained_layout=True, dpi=180)
 sns.boxplot(data=beta_values.sample(1000), showfliers=False)
