@@ -1,20 +1,23 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: ipynb,py:light
 #     text_representation:
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.7.0
+#       jupytext_version: 1.13.1
 #   kernelspec:
-#     display_name: Python [conda env:mouse_hema_meth_py37_mamba_full] *
+#     display_name: Python [conda env:mouse_hema_meth_py37_mamba_full]
 #     language: python
 #     name: conda-env-mouse_hema_meth_py37_mamba_full-py
 # ---
 
 # # Setup
 
-n_cores = 16
+n_cores = 12
+
+# ## Imports
 
 # +
 # isort: off
@@ -33,22 +36,26 @@ import numpy as np
 
 # isort: on
 
+import methlevels as ml
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import mouse_hema_meth.utils as ut
 import pandas as pd
 import seaborn as sns
 from dendritic_cells.config import paper_context2
 from IPython.display import Markdown, display
 from pandas.api.types import CategoricalDtype
-
-import mouse_hema_meth.utils as ut
 # -
+
+# ## Paths
 
 import dendritic_cells.analyses_for_manuscript_20201015_lib as lib
 
 results_dir = "/icgc/dkfzlsdf/analysis/hs_ontogeny/notebook-data/gNs4xcMJscaLLwlt"
 os.makedirs(results_dir, exist_ok=True)
 
+
+# ## Util functions
 
 def link_fn(s, markdown=True):
     s = str(s)
@@ -68,12 +75,20 @@ mpl.rcParams.update(paper_context2)
 
 # %matplotlib inline
 
+# + [markdown] heading_collapsed="true"
+#
 # ## Recompute flag
+#
+# -
 
 recompute = False
 
+# + [markdown] tags=[]
+#
 # # QC
 
+# + [markdown] heading_collapsed="true" tags=[]
+#
 # ## Flagstats
 
 # +
@@ -117,6 +132,8 @@ flagstats_selected.reset_index().to_csv(
 link_fn(results_dir + "/flagstats-selected.csv")
 print(results_dir + "/flagstats-selected.csv")
 
+# + [markdown] heading_collapsed="true" tags=[]
+#
 # ## Metadata table
 
 # +
@@ -147,9 +164,12 @@ mcalls_metadata_table.loc["monos", "pickle_path"] = (
     .str.replace("monos", "monos-new")
     .to_numpy()
 )
-# -
 
+# + [markdown] heading_collapsed="true" tags=[]
+#
 # ## Conversion rates
+#
+# -
 
 chh_meth = lib.gather_conversion_rate_table(mcalls_metadata_table)
 display(chh_meth.head())
@@ -157,7 +177,11 @@ chh_meth.to_csv(results_dir + "/conversion-rates.csv")
 print(results_dir + "/conversion-rates.csv")
 link_fn(results_dir + "/conversion-rates.csv")
 
+# + [markdown] heading_collapsed="true" tags=[]
+#
 # ## Coverage
+#
+# -
 
 # computed in hema meth project
 pops = ["cdp", "cmop", "dc-cd11b", "dc-cd8a", "hsc", "mdp", "monos", "pdc"]
@@ -167,30 +191,34 @@ pop_ntotal
 
 # Restrict coverage to the three already published HSC replicates
 
-n_total = pd.Series(0, index=pop_ntotal.index, dtype='i8')
-for fp in mcalls_metadata_table.loc['hsc', 'pickle_path'].tolist():
-    n_total += pd.read_pickle(fp)['n_total']
-pop_ntotal['hsc'] = n_total
+n_total = pd.Series(0, index=pop_ntotal.index, dtype="i8")
+for fp in mcalls_metadata_table.loc["hsc", "pickle_path"].tolist():
+    n_total += pd.read_pickle(fp)["n_total"]
+pop_ntotal["hsc"] = n_total
 
 # Update monos to use the old monos
 
-n_total = pd.Series(0, index=pop_ntotal.index, dtype='i8')
-for fp in mcalls_metadata_table.loc['monos', 'bed_path'].tolist():
+n_total = pd.Series(0, index=pop_ntotal.index, dtype="i8")
+for fp in mcalls_metadata_table.loc["monos", "bed_path"].tolist():
     print(fp)
-    n_total += pd.read_csv(fp, sep='\t')['n_total']
+    n_total += pd.read_csv(fp, sep="\t")["n_total"]
     print(n_total.mean())
-pop_ntotal['monos'] = n_total
+pop_ntotal["monos"] = n_total
 
 coverage_mean_sd = pop_ntotal.describe().T
 coverage_mean_sd
 
-coverage_mean_sd.index.name = 'Population'
-coverage_mean_sd_tsv = results_dir + '/coverage-mean-sd2.csv'
-coverage_mean_sd.reset_index().to_csv(coverage_mean_sd_tsv, sep='\t')
+coverage_mean_sd.index.name = "Population"
+coverage_mean_sd_tsv = results_dir + "/coverage-mean-sd2.csv"
+coverage_mean_sd.reset_index().to_csv(coverage_mean_sd_tsv, sep="\t")
 print(coverage_mean_sd_tsv)
 link_fn(coverage_mean_sd_tsv)
 
+# + [markdown] heading_collapsed="true" tags=[]
+#
 # ## Average methylation
+#
+# -
 
 (
     pop_quantiles_df,
@@ -222,7 +250,15 @@ rep_beta_value_mean_df_long
 rep_beta_value_mean_df_long.to_csv(results_dir + "/rep-beta-values_mean-sd.csv")
 link_fn(results_dir + "/rep-beta-values_mean-sd.csv")
 
+# + [markdown] tags=[]
+#
 # # Retrieve and format input data
+
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ## Read from RDS
+#
+# -
 
 # Get cluster ids and dmr boundaries to TSV format, load into python, adjust column names and convert Chromosome to string categorical
 
@@ -251,6 +287,12 @@ cluster_ids_rds
 
 cluster_ids_beta_values_dmr_coords = pd.read_csv(cluster_ids_tsv, sep="\t")
 
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ## Note: some values are NA
+#
+# -
+
 cluster_ids_beta_values_dmr_coords[
     [
         "hsc",
@@ -263,6 +305,8 @@ cluster_ids_beta_values_dmr_coords[
         "pdc",
     ]
 ].isnull().sum()
+
+# ### Bring Granges into standard format, add region_id
 
 chrom_dtype = CategoricalDtype(
     np.sort(np.arange(1, 20).astype(str)),
@@ -285,13 +329,33 @@ cluster_ids_beta_values_dmr_coords = (
 
 cluster_ids_beta_values_dmr_coords
 
+# + [markdown] tags=[]
+#
+# ## Extract individual dataframes (cluster ids, dmrs, betas)
+
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ### DMRs
+#
+# -
+
 dmrs = cluster_ids_beta_values_dmr_coords[["Chromosome", "Start", "End"]]
 dmrs
+
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ### Cluster ids
+#
+# -
 
 cluster_ids_df = cluster_ids_beta_values_dmr_coords[["cluster"]]
 cluster_ids_df
 
-# ## Meth levels in DMRs
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ### Betas
+#
+# -
 
 beta_values = cluster_ids_beta_values_dmr_coords[
     [
@@ -308,29 +372,129 @@ beta_values = cluster_ids_beta_values_dmr_coords[
 zscores = ut.row_zscores(beta_values)
 cluster_ids_no_nas = cluster_ids_df.loc[beta_values.index].copy()
 
-beta_values.describe().reset_index().to_csv(results_dir + '/dmr-beta-value_agg-stats.tsv')
-ut.dkfz_link(results_dir + '/dmr-beta-value_agg-stats.tsv')
+beta_values.describe().reset_index().to_csv(
+    results_dir + "/dmr-beta-value_agg-stats.tsv"
+)
+ut.dkfz_link(results_dir + "/dmr-beta-value_agg-stats.tsv")
 
-fig, ax = plt.subplots(1, 1, figsize=(ut.cm(8), ut.cm(5)), constrained_layout=True, dpi=180)
-sns.violinplot(data=beta_values.sample(1000), cut=0, inner='box', width=0.9)
-ax.set_ylabel('DMR methylation')
-ut.save_and_display(fig, png_path=results_dir + '/global-dmr-beta-values_violin.png')
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ## Extract Rep methlevels
+#
+# if recompute:
+#     meth_stats_rep = lib.get_rep_meth_levels(mcalls_metadata_table, dmrs, n_cores)
+#     ut.to_pickle(meth_stats_rep, results_dir + '/rep-level-methstats_obj.p')
+# else:
+#     meth_stats_rep = ut.from_pickle(results_dir + '/rep-level-methstats_obj.p')
 
-fig, ax = plt.subplots(1, 1, figsize=(ut.cm(3), ut.cm(5)), constrained_layout=True, dpi=180)
-sns.violinplot(data=beta_values[['pdc', 'dc_cd11b', 'dc_cd8a']].sample(1000), cut=0, inner='box', width=0.9)
-ax.set_ylabel('DMR methylation')
-ut.save_and_display(fig, png_path=results_dir + '/global-dmr-beta-values_violin_dcs-only.png')
+# + [markdown] tags=[]
+#
+# # Meth levels in DMRs
+#
+# -
 
-fig, ax = plt.subplots(1, 1, figsize=(ut.cm(8), ut.cm(8)), constrained_layout=True, dpi=180)
+beta_values
+
+# ## Aggregated distribution stats
+
+# ### Rep-level
+
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ### Pop-level
+#
+# -
+
+# beta values are already filtered for complete observations
+
+assert not beta_values.isnull().any().any()
+
+# + tags=[]
+q1_median_q3_pop_wide = (
+    beta_values.describe()
+    .T.reset_index()
+    .rename(columns={"index": "pop", "25%": "Q1", "50%": "median", "75%": "Q3"})
+)
+q1_median_q3_pop_wide
+# -
+
+q1_median_q3_pop_long = (
+    beta_values.describe()
+    .T.reset_index()
+    .rename(columns={"index": "pop", "25%": "Q1", "50%": "median", "75%": "Q3"})[
+        ["pop", "Q1", "median", "Q3"]
+    ]
+    .set_index("pop")
+    .stack()
+    .to_frame()
+    .reset_index()
+    .set_axis(["pop", "stat", "value"], axis=1)
+)
+q1_median_q3_rep
+
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ## Population distribution plots
+
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ### Violin all
+#
+# -
+
+fig, ax = plt.subplots(
+    1, 1, figsize=(ut.cm(8), ut.cm(5)), constrained_layout=True, dpi=180
+)
+sns.violinplot(data=beta_values.sample(1000), cut=0, inner="box", width=0.9)
+ax.set_ylabel("DMR methylation")
+ut.save_and_display(fig, png_path=results_dir + "/global-dmr-beta-values_violin.png")
+
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ### Violin selected
+#
+# -
+
+fig, ax = plt.subplots(
+    1, 1, figsize=(ut.cm(3), ut.cm(5)), constrained_layout=True, dpi=180
+)
+sns.violinplot(
+    data=beta_values[["pdc", "dc_cd11b", "dc_cd8a"]].sample(1000),
+    cut=0,
+    inner="box",
+    width=0.9,
+)
+ax.set_ylabel("DMR methylation")
+ut.save_and_display(
+    fig, png_path=results_dir + "/global-dmr-beta-values_violin_dcs-only.png"
+)
+
+# + [markdown] heading_collapsed="true" tags=[]
+#
+# ### Boxplot all
+#
+# -
+
+fig, ax = plt.subplots(
+    1, 1, figsize=(ut.cm(8), ut.cm(8)), constrained_layout=True, dpi=180
+)
 sns.boxplot(data=beta_values.sample(1000), showfliers=False)
-ut.save_and_display(fig, png_path=results_dir + '/global-dmr-beta-values_boxplot.png')
+ut.save_and_display(fig, png_path=results_dir + "/global-dmr-beta-values_boxplot.png")
 
+# + [markdown] heading_collapsed="true" tags=[]
+#
 # # Characterize clustering
+#
+# -
 
 beta_values.isnull().sum()
 
 
+# + [markdown] heading_collapsed="true"
+#
 # ## Heatmap
+#
+# -
 
 import clustering_tools as ct
 import mouse_hema_meth.utils as ut
@@ -371,7 +535,11 @@ lib.create_clustermaps_with_special_order(
 link_fn(png_path)
 link_fn(png_path.replace(".png", ".pdf"))
 
+# + [markdown] heading_collapsed="true"
+#
 # ## Cluster sizes
+#
+# -
 
 fig, ax = plt.subplots(
     1, 1, constrained_layout=True, dpi=180, figsize=(5 / 2.54, 5 / 2.54)
@@ -383,7 +551,11 @@ ax.set(ylabel="Frequency", xlabel="Cluster ID")
 fig.savefig(results_dir + "/cluster-sizes.pdf")
 link_fn(results_dir + "/cluster-sizes.pdf")
 
+# + [markdown] heading_collapsed="true"
+#
 # ## Gain/loss stratified counts
+#
+# -
 
 # not all dmrs have only one sign (deltas < 0.1 are not considered here)
 
@@ -405,9 +577,15 @@ gain_loss_classif
 
 gain_loss_classif.value_counts()
 
+# + [markdown] tags=[]
+#
 # # Gene annotation
 
+# + [markdown] heading_collapsed="true"
+#
 # ## Computation
+#
+# -
 
 gtf_fp = (
     "/icgc/dkfzlsdf/analysis/hs_ontogeny/databases/gene_annotations"
@@ -423,7 +601,11 @@ anno_res_paths_d = lib.run_gtfanno(
     recompute=False,
 )
 
+# + [markdown] heading_collapsed="true"
+#
 # ## Paths to detailed annotations
+#
+# -
 
 anno_res_paths_d
 
@@ -431,7 +613,11 @@ for k, v in anno_res_paths_d.items():
     print(k)
     link_fn(v)
 
+# + [markdown] tags=[]
+#
 # ## Paths to merged annotations
+#
+# -
 
 # One row per DMR, one feature class per DMR (one of promoter, exon, etc.)
 
@@ -451,13 +637,21 @@ print(results_dir + "/merged-gene-annos.p")
 print(results_dir + "/merged-gene-annos.tsv")
 link_fn(results_dir + "/merged-gene-annos.tsv")
 
+# + [markdown] heading_collapsed="true" tags=[]
+#
 # ## Genomic regions quick viz
+#
+# -
 
 # note about UTRs: i double checked the UTR calling; and I have set 5'-UTR precedence higher than promoters, so this is not an effect of covering 5'-UTRs with promoters. The picture is very similar to global hematopoiesis in general.
 
 merged_annos["feat_class"].value_counts().sort_values().plot.bar()
 
+# + [markdown] heading_collapsed="true"
+#
 # # Concatenate all available annotations
+#
+# -
 
 all_annos = pd.concat(
     [cluster_ids_beta_values_dmr_coords, merged_annos[["gene_name", "feat_class"]]],
@@ -488,7 +682,11 @@ all_annos.head()
 print(all_annos_tsv)
 link_fn(all_annos_tsv)
 
+# + [markdown] heading_collapsed="true"
+#
 # ## Promoter DMR annos only
+#
+# -
 
 promoter_genes = all_annos.query('feat_class == "Promoter"').sort_values(
     ["cluster", "gene_name"]
@@ -501,17 +699,26 @@ promoter_genes.head()
 print(promoter_genes_tsv)
 link_fn(promoter_genes_tsv)
 
+# + [markdown] heading_collapsed="true"
+#
 # # Geneset enrichment
 
+# + [markdown] heading_collapsed="true"
+#
 # ## Geneset inspection (readme!)
+#
+# -
 
 # **Note1**
+
 # There are duplicates within the genesets; beware of this in other analyses too!
 
 # **Note2**
+
 # The cardinality of the genesets is in part quite high; it may be beneficial for the analysis or the interpretation of the analysis if this is repeated with more curated genelists. Such as it is, each cluster has a high number of gene overlaps, which may be more difficult to interprete. (See section at the end of the notebook)
 
 # **Note3**
+
 # A considerable number of genes occurs in multiple clusters; is this intended?
 
 dc_genesets_csv = (
@@ -520,7 +727,11 @@ dc_genesets_csv = (
 
 rosenbauer_genesets_df = pd.read_csv(dc_genesets_csv, sep="\t", header=0)
 
+# + [markdown] heading_collapsed="true"
+#
 # ### Geneset contains duplicates (link to cleaned genesets at the end)
+#
+# -
 
 # The genelists contain multiple mentions of the same genes, this has to be corrected and should be relayed back to the Rosenbauer lab, since this could also affect other analyses, if these genelists would be used elsewherejf.
 # Number of mentions of unique genes per main geneset (eg 20 genes in coeff4_down are mentioned twice)
@@ -566,7 +777,11 @@ rosenbauer_genesets_no_duplicates.to_csv(
 print(rosenbauer_genesets_no_duplicates_tsv)
 link_fn(rosenbauer_genesets_no_duplicates_tsv)
 
+# + [markdown] heading_collapsed="true"
+#
 # ### Genesets are large
+#
+# -
 
 # Number of unique genes
 
@@ -574,7 +789,11 @@ rosenbauer_genesets_no_duplicates.stack().nunique()
 
 rosenbauer_genesets_no_duplicates.notnull().sum().sort_values().plot.bar()
 
+# + [markdown] heading_collapsed="true"
+#
 # ### Genes occur in multiple clusters
+#
+# -
 
 # Example: just the non cell type specific clusters
 
@@ -594,7 +813,11 @@ n_cluster_per_gene.value_counts().plot.bar()
 with pd.option_context("display.min_rows", 50, "display.max_rows", 50):
     display(n_cluster_per_gene.head(30))
 
+# + [markdown] heading_collapsed="true"
+#
 # ## Computation (Report with figures at the end of the section)
+#
+# -
 
 dmr_geneset_enrichments_output_dir = results_dir + "/dmr_geneset_enrichments_results"
 dmr_geneset_enrichments_report_dir = (
@@ -640,7 +863,11 @@ lib.run_geneset_enrichment_analysis(
     # vlim=(-5, 5),
 )
 
+# + [markdown] heading_collapsed="true"
+#
 # ## Overlap counts, overlapping genes
+#
+# -
 
 overlap_stats_pattern = (
     dmr_geneset_enrichments_output_dir + "/{anno_name}/{database}/overlap-stats.p"
@@ -650,7 +877,11 @@ cluster_overlap_stats_pattern = (
     + "/{anno_name}/{database}/{clustering}.{filter}/cluster-overlap-stats.p"
 )
 
+# + [markdown] heading_collapsed="true"
+#
 # ### Table: dmrs vs hit in geneset (boolean)
+#
+# -
 
 hits_table = (overlap_stats_pattern[:-2] + "_hits.p").format(
     anno_name="gtfanno", database="rosenbauer_genesets_all_gmt"
@@ -663,7 +894,11 @@ hits_table_df.to_csv(hits_table_tsv, sep="\t", index=True)
 hits_table_tsv
 link_fn(hits_table_tsv)
 
+# + [markdown] heading_collapsed="true"
+#
 # ### Tables: clusters vs number of hits in cluster
+#
+# -
 
 # **Note** the caveats on the provided genesets (see above)
 
@@ -698,7 +933,11 @@ for filter_name in ["promoter", "gene_regions", "all_annotated"]:
     print(curr_cluster_overlap_counts_tsv)
     link_fn(curr_cluster_overlap_counts_tsv)
 
+# + [markdown] heading_collapsed="true"
+#
 # ### Annotation: clusters vs marker genes found
+#
+# -
 
 # Genes found in clusters, filtered by gene body, promoter, or all regions
 
@@ -795,3 +1034,8 @@ ax.set_ylim(0, 32_000)
 ax.set(xlabel="")
 fig.savefig(results_dir + "gain-loss-pw-counts-barplot.pdf")
 link_fn(results_dir + "gain-loss-pw-counts-barplot.pdf")
+
+# # Test significance of population meth differences
+
+q1_median_q3_rep_wide, q1_median_q3_rep_long = lib.get_meth_stats_arrays(meth_stats_rep)
+

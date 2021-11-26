@@ -10,6 +10,7 @@ from itertools import product
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import methlevels as ml
 import codaplot as co
 import figure_report as fr
 import gtfanno as ga
@@ -20,16 +21,68 @@ import mouse_hema_meth.shared_vars as mhvars
 import mouse_hema_meth.styling as mhstyle
 import mouse_hema_meth.utils as ut
 import numpy as np
-import pandas as pd
+# pyright workaround
+import pandas
+import pandas.testing
+import pandas.api
+pd = pandas
 import region_set_profiler as rsp
 import seaborn as sns
 from matplotlib.figure import Figure
 from typing_extensions import Literal
 
+
+import seaborn as sns
+import scipy.stats
+from itertools import combinations, product
+
+# isort: off
+import rpy2.robjects as ro
+from rpy2.robjects.packages import importr
+from rpy2.robjects.vectors import StrVector, IntVector
+
+from functools import partial
+import rpy2.ipython.html
+
+rpy2.ipython.html.init_printing()
+rpy2.ipython.html.html_rdataframe = partial(
+    rpy2.ipython.html.html_rdataframe, table_class="docutils"
+)
+
+
+from rpy2.robjects.conversion import localconverter
+from rpy2.robjects import pandas2ri, numpy2ri
+
+import mouse_hema_meth.rpy2_utils as rpy2_utils
+
+numpy2ri.activate()
+pandas2ri.activate()
+
+import rpy2.robjects.lib.ggplot2 as gg
+from rpy2.ipython.ggplot import image_png
+
+
+# def image_png2(p, figsize):
+#     display(image_png(p, figsize[0] * 72, figsize[1] * 72))
+
+
+import mouse_hema_meth.rpy2_styling as mh_rpy2_styling
+
+# lemon = importr("lemon")
+
+NULL = ro.NULL
+import rpy2.rinterface as ri
+
+NA = ri.NA_Logical
+
+# isort: on
+
 mpl.use("Agg")
 
 
 PROJECT_TEMPDIR = "/icgc/dkfzlsdf/analysis/hs_ontogeny/temp"
+
+print('reloaded analyses lib')
 
 
 def run_gtfanno(
@@ -1150,7 +1203,6 @@ def gather_meth_level_data(
     )
 
 
-import methlevels as ml
 
 
 def get_rep_meth_levels(mcalls_metadata_table, dmrs, n_cores) -> ml.MethStats:
@@ -1184,48 +1236,6 @@ def get_rep_meth_levels(mcalls_metadata_table, dmrs, n_cores) -> ml.MethStats:
     )
 
 
-import seaborn as sns
-import scipy.stats
-from itertools import combinations, product
-
-import rpy2.robjects as ro
-from rpy2.robjects.packages import importr
-from rpy2.robjects.vectors import StrVector, IntVector
-
-from functools import partial
-import rpy2.ipython.html
-
-rpy2.ipython.html.init_printing()
-rpy2.ipython.html.html_rdataframe = partial(
-    rpy2.ipython.html.html_rdataframe, table_class="docutils"
-)
-
-
-from rpy2.robjects.conversion import localconverter
-from rpy2.robjects import pandas2ri, numpy2ri
-
-import mouse_hema_meth.rpy2_utils as rpy2_utils
-
-numpy2ri.activate()
-pandas2ri.activate()
-
-import rpy2.robjects.lib.ggplot2 as gg
-from rpy2.ipython.ggplot import image_png
-
-
-# def image_png2(p, figsize):
-#     display(image_png(p, figsize[0] * 72, figsize[1] * 72))
-
-
-import mouse_hema_meth.rpy2_styling as mh_rpy2_styling
-
-# lemon = importr("lemon")
-
-NULL = ro.NULL
-import rpy2.rinterface as ri
-
-NA = ri.NA_Logical
-
 
 def get_meth_stats_arrays(meth_stats_rep):
 
@@ -1248,9 +1258,6 @@ def get_meth_stats_arrays(meth_stats_rep):
     )
     q1_median_q3_rep_wide
 
-
-
-
     q1_median_q3_rep_long = (
         beta_values.describe()
         .T.reset_index()
@@ -1265,14 +1272,9 @@ def get_meth_stats_arrays(meth_stats_rep):
     )
     q1_median_q3_rep_long
 
-    g = sns.catplot(
-        x="Population",
-        y="value",
-        hue="Replicate",
-        data=q1_median_q3_rep_long,
-        kind="strip",
-    )
+    return q1_median_q3_rep_wide, q1_median_q3_rep_long
 
+def rest():
     df = q1_median_q3_rep_wide
     pops = ["pdc", "dc-cd11b", "dc-cd8a"]
 
